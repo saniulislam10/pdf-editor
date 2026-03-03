@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.mjs?url';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   Type, 
   Square, 
@@ -22,7 +23,10 @@ import {
   Trash2,
   ChevronLeft,
   ChevronRight,
-  Loader2
+  Loader2,
+  Settings2,
+  Layers,
+  Search
 } from 'lucide-react';
 import { cn } from '../utils/utils';
 
@@ -52,20 +56,232 @@ const hexToRgb = (hex: string) => {
   return rgb(r, g, b);
 };
 
+interface PDFPageProps {
+  pdfDoc: pdfjsLib.PDFDocumentProxy;
+  pageNumber: number;
+  zoom: number;
+  tool: 'select' | 'text' | 'rect';
+  elements: EditorElement[];
+  selectedId: string | null;
+  onSelect: (id: string | null) => void;
+  onUpdateElement: (id: string, updates: Partial<EditorElement>) => void;
+  onAddElement: (el: EditorElement) => void;
+  onOriginalTextClick: (item: any) => void;
+  originalTextItems: any[];
+  setOriginalTextItems: (items: any[]) => void;
+}
+
+const PDFPage: React.FC<PDFPageProps> = ({
+  pdfDoc,
+  pageNumber,
+  zoom,
+  tool,
+  elements,
+  selectedId,
+  onSelect,
+  onUpdateElement,
+  onAddElement,
+  onOriginalTextClick,
+  originalTextItems,
+  setOriginalTextItems,
+}) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let renderTask: pdfjsLib.RenderTask | null = null;
+
+    const renderPage = async () => {
+      setLoading(true);
+      try {
+        const page = await pdfDoc.getPage(pageNumber);
+        const viewport = page.getViewport({ scale: zoom * 2.0 });
+        const canvas = canvasRef.current!;
+        const context = canvas.getContext('2d')!;
+
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
+        
+        canvas.style.width = `${viewport.width / 2}px`;
+        canvas.style.height = `${viewport.height / 2}px`;
+
+        renderTask = page.render({ canvasContext: context, viewport });
+        await renderTask.promise;
+
+        if (originalTextItems.length === 0) {
+          const textContent = await page.getTextContent();
+          const items = textContent.items.map((item: any) => {
+            const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
+            const fontSize = Math.sqrt(item.transform[0] * item.transform[0] + item.transform[1] * item.transform[1]);
+            const scaledFontSize = fontSize * (zoom * 2);
+            
+            return {
+              str: item.str,
+              x: tx[4] / (zoom * 2),
+              y: (tx[5] - scaledFontSize) / (zoom * 2),
+              width: item.width || (item.str.length * fontSize * 0.5),
+              height: fontSize,
+              fontSize: fontSize,
+            };
+          });
+          setOriginalTextItems(items);
+        }
+      } catch (error: any) {
+        if (error.name !== 'RenderingCancelledException') {
+          console.error('Error rendering page:', error);
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    renderPage();
+
+    return () => {
+      if (renderTask) renderTask.cancel();
+    };
+  }, [pdfDoc, pageNumber, zoom]);
+
+  const handleCanvasClick = (e: React.MouseEvent) => {
+    if (tool === 'select') {
+      onSelect(null);
+      return;
+    }
+
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const x = (e.clientX - rect.left) / zoom;
+    const y = (e.clientY - rect.top) / zoom;
+
+    const newElement: EditorElement = {
+      id: Math.random().toString(36).substr(2, 9),
+      type: tool === 'text' ? 'text' : 'rect',
+      x,
+      y,
+      content: tool === 'text' ? 'New Text' : '',
+      fontSize: 16,
+      color: '#000000',
+      width: tool === 'rect' ? 100 : undefined,
+      height: tool === 'rect' ? 50 : undefined,
+    };
+
+    onAddElement(newElement);
+  };
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="relative mb-12 flex flex-col items-center group"
+    >
+      <div className="absolute -top-8 left-0 flex items-center gap-2 px-3 py-1 bg-white dark:bg-zinc-800 rounded-full shadow-sm border border-zinc-200 dark:border-zinc-700 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+        <span className="text-[10px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest">
+          Page {pageNumber}
+        </span>
+      </div>
+      
+      <div 
+        className="relative shadow-[0_20px_50px_rgba(0,0,0,0.1)] bg-white ring-1 ring-black/5 rounded-sm overflow-hidden" 
+        onClick={handleCanvasClick}
+      >
+        <canvas ref={canvasRef} className="block" />
+        
+        {/* Original Text Layer */}
+        <div className="absolute inset-0 z-[5]">
+          {originalTextItems.map((item, idx) => {
+            const isEditing = elements.some(el => 
+              el.type === 'original-text' && Math.abs(el.x - item.x) < 1 && Math.abs(el.y - item.y) < 1
+            );
+
+            return (
+              <div
+                key={idx}
+                onClick={(e) => {
+                  if (tool !== 'select') return;
+                  e.stopPropagation();
+                  onOriginalTextClick(item);
+                }}
+                style={{
+                  position: 'absolute',
+                  left: item.x * zoom,
+                  top: item.y * zoom,
+                  width: item.width * zoom,
+                  height: item.height * zoom,
+                  pointerEvents: tool === 'select' ? 'auto' : 'none',
+                  cursor: tool === 'select' ? 'text' : 'default',
+                  backgroundColor: isEditing ? 'white' : 'transparent',
+                }}
+                className={cn(
+                  "transition-all duration-200 border border-transparent",
+                  tool === 'select' && !isEditing && "hover:bg-emerald-500/10 hover:border-emerald-500/20 rounded-sm",
+                  isEditing && "z-[5]"
+                )}
+              />
+            );
+          })}
+        </div>
+
+        {/* Overlay Elements */}
+        {elements.map((el) => (
+          <motion.div
+            key={el.id}
+            layoutId={el.id}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelect(el.id);
+            }}
+            style={{
+              position: 'absolute',
+              left: el.x * zoom,
+              top: el.y * zoom,
+              cursor: tool === 'select' ? 'move' : 'default',
+              border: selectedId === el.id ? '2px solid #10b981' : '1px dashed transparent',
+              padding: '4px',
+              minWidth: el.type === 'text' || el.type === 'original-text' ? '50px' : (el.width || 0) * zoom,
+              minHeight: el.type === 'text' || el.type === 'original-text' ? '20px' : (el.height || 0) * zoom,
+              backgroundColor: el.type === 'rect' ? el.color + '40' : (el.type === 'original-text' ? 'white' : 'transparent'),
+              zIndex: selectedId === el.id ? 10 : 6,
+            }}
+            className={cn(
+              "rounded-sm transition-shadow duration-200",
+              selectedId === el.id && "shadow-lg"
+            )}
+          >
+            {el.type === 'text' || el.type === 'original-text' ? (
+              <input
+                autoFocus={selectedId === el.id}
+                value={el.content}
+                onChange={(e) => onUpdateElement(el.id, { content: e.target.value })}
+                style={{
+                  fontSize: `${(el.fontSize || 16) * zoom}px`,
+                  color: el.color,
+                  backgroundColor: 'transparent',
+                  border: 'none',
+                  outline: 'none',
+                  width: '100%',
+                  fontFamily: 'inherit',
+                }}
+                className="placeholder:italic"
+              />
+            ) : (
+              <div style={{ width: el.width, height: el.height }} />
+            )}
+          </motion.div>
+        ))}
+      </div>
+    </motion.div>
+  );
+};
+
 export const PDFEditor: React.FC<{ file: File; onBack: () => void }> = ({ file, onBack }) => {
   const [pdfDoc, setPdfDoc] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
   const [elements, setElements] = useState<Record<number, EditorElement[]>>({});
   const [originalTextItems, setOriginalTextItems] = useState<Record<number, any[]>>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tool, setTool] = useState<'select' | 'text' | 'rect'>('select');
   const [zoom, setZoom] = useState(1.0);
   const [loading, setLoading] = useState(true);
-  const [leftSidebarOpen, setLeftSidebarOpen] = useState(true);
-  const [rightSidebarOpen, setRightSidebarOpen] = useState(true);
-  
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const loadPDF = async () => {
@@ -84,72 +300,10 @@ export const PDFEditor: React.FC<{ file: File; onBack: () => void }> = ({ file, 
     loadPDF();
   }, [file]);
 
-  useEffect(() => {
-    if (!pdfDoc || !canvasRef.current) return;
-
-    let renderTask: pdfjsLib.RenderTask | null = null;
-
-    const renderPage = async () => {
-      try {
-        const page = await pdfDoc.getPage(currentPage);
-        const viewport = page.getViewport({ scale: zoom * 2.0 });
-        const canvas = canvasRef.current!;
-        const context = canvas.getContext('2d')!;
-
-        canvas.height = viewport.height;
-        canvas.width = viewport.width;
-        
-        canvas.style.width = `${viewport.width / 2}px`;
-        canvas.style.height = `${viewport.height / 2}px`;
-
-        renderTask = page.render({ canvasContext: context, viewport });
-        await renderTask.promise;
-
-        // Extract text content for editing
-        if (!originalTextItems[currentPage]) {
-          const textContent = await page.getTextContent();
-          const items = textContent.items.map((item: any) => {
-            // Transform matrix from PDF space to Viewport space
-            const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
-            const fontSize = Math.sqrt(item.transform[0] * item.transform[0] + item.transform[1] * item.transform[1]);
-            
-            // tx[5] is the baseline in viewport pixels (top-down)
-            // We want the top of the text
-            const scaledFontSize = fontSize * (zoom * 2);
-            
-            return {
-              str: item.str,
-              x: tx[4] / (zoom * 2),
-              y: (tx[5] - scaledFontSize) / (zoom * 2),
-              width: item.width || (item.str.length * fontSize * 0.5),
-              height: fontSize,
-              fontSize: fontSize,
-            };
-          });
-          setOriginalTextItems(prev => ({ ...prev, [currentPage]: items }));
-        }
-      } catch (error: any) {
-        if (error.name === 'RenderingCancelledException') {
-          return;
-        }
-        console.error('Error rendering page:', error);
-      }
-    };
-
-    renderPage();
-
-    return () => {
-      if (renderTask) {
-        renderTask.cancel();
-      }
-    };
-  }, [pdfDoc, currentPage, zoom]);
-
-  const handleOriginalTextClick = (item: any) => {
+  const handleOriginalTextClick = (pageNumber: number, item: any) => {
     if (tool !== 'select') return;
 
-    // Check if we already have an element for this original text
-    const existing = elements[currentPage]?.find(el => 
+    const existing = elements[pageNumber]?.find(el => 
       el.type === 'original-text' && Math.abs(el.x - item.x) < 1 && Math.abs(el.y - item.y) < 1
     );
 
@@ -174,52 +328,36 @@ export const PDFEditor: React.FC<{ file: File; onBack: () => void }> = ({ file, 
 
     setElements(prev => ({
       ...prev,
-      [currentPage]: [...(prev[currentPage] || []), newElement]
+      [pageNumber]: [...(prev[pageNumber] || []), newElement]
     }));
     setSelectedId(newElement.id);
   };
 
-  const addElement = (e: React.MouseEvent) => {
-    if (tool === 'select') return;
-
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return;
-
-    const x = (e.clientX - rect.left) / zoom;
-    const y = (e.clientY - rect.top) / zoom;
-
-    const newElement: EditorElement = {
-      id: Math.random().toString(36).substr(2, 9),
-      type: tool === 'text' ? 'text' : 'rect',
-      x,
-      y,
-      content: tool === 'text' ? 'New Text' : '',
-      fontSize: 16,
-      color: '#000000',
-      width: tool === 'rect' ? 100 : undefined,
-      height: tool === 'rect' ? 50 : undefined,
-    };
-
+  const handleAddElement = (pageNumber: number, el: EditorElement) => {
     setElements(prev => ({
       ...prev,
-      [currentPage]: [...(prev[currentPage] || []), newElement]
+      [pageNumber]: [...(prev[pageNumber] || []), el]
     }));
-    setSelectedId(newElement.id);
+    setSelectedId(el.id);
     setTool('select');
   };
 
-  const updateElement = (id: string, updates: Partial<EditorElement>) => {
+  const handleUpdateElement = (pageNumber: number, id: string, updates: Partial<EditorElement>) => {
     setElements(prev => ({
       ...prev,
-      [currentPage]: prev[currentPage].map(el => el.id === id ? { ...el, ...updates } : el)
+      [pageNumber]: prev[pageNumber].map(el => el.id === id ? { ...el, ...updates } : el)
     }));
   };
 
-  const deleteElement = (id: string) => {
-    setElements(prev => ({
-      ...prev,
-      [currentPage]: prev[currentPage].filter(el => el.id !== id)
-    }));
+  const handleDeleteElement = () => {
+    if (!selectedId) return;
+    setElements(prev => {
+      const next = { ...prev };
+      for (const page in next) {
+        next[page] = next[page].filter(el => el.id !== selectedId);
+      }
+      return next;
+    });
     setSelectedId(null);
   };
 
@@ -236,7 +374,6 @@ export const PDFEditor: React.FC<{ file: File; onBack: () => void }> = ({ file, 
 
       for (const el of pageElements) {
         if (el.type === 'original-text') {
-          // White out the original text area
           page.drawRectangle({
             x: el.x,
             y: height - el.y - (el.originalHeight || 0),
@@ -244,7 +381,6 @@ export const PDFEditor: React.FC<{ file: File; onBack: () => void }> = ({ file, 
             height: (el.originalHeight || 0) * 1.2,
             color: rgb(1, 1, 1),
           });
-          // Draw new text
           page.drawText(el.content || '', {
             x: el.x,
             y: height - el.y - (el.fontSize || 16),
@@ -283,8 +419,6 @@ export const PDFEditor: React.FC<{ file: File; onBack: () => void }> = ({ file, 
     URL.revokeObjectURL(url);
   };
 
-  const selectedElement = elements[currentPage]?.find(el => el.id === selectedId);
-
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center h-[600px] gap-4">
@@ -295,249 +429,184 @@ export const PDFEditor: React.FC<{ file: File; onBack: () => void }> = ({ file, 
   }
 
   return (
-    <div className="flex flex-col h-screen bg-zinc-100 dark:bg-zinc-950 overflow-hidden -m-8">
-      {/* Header Toolbar */}
-      <div className="h-14 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between px-4 z-30 shadow-sm">
-        <div className="flex items-center gap-3">
+    <div className="flex flex-col h-screen bg-[#F8F9FA] dark:bg-zinc-950 overflow-hidden -m-8 relative">
+      {/* Floating Header Toolbar */}
+      <motion.div 
+        initial={{ y: -100 }}
+        animate={{ y: 0 }}
+        className="absolute top-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl border border-zinc-200 dark:border-zinc-800 px-4 py-2 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] ring-1 ring-black/5"
+      >
+        <div className="flex items-center gap-2">
           <button 
             onClick={onBack} 
-            className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"
-            title="Back to Dashboard"
+            className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl transition-all duration-200 active:scale-95"
           >
-            <ChevronLeft className="w-5 h-5" />
+            <ChevronLeft className="w-5 h-5 text-zinc-600 dark:text-zinc-400" />
           </button>
-          <div className="h-6 w-px bg-zinc-200 dark:bg-zinc-800" />
-          <h1 className="text-sm font-bold truncate max-w-[200px]">{file.name}</h1>
+          <div className="h-6 w-px bg-zinc-200 dark:bg-zinc-800 mx-1" />
+          <div className="flex flex-col max-w-[120px]">
+            <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest truncate">PDF Craft</span>
+            <h1 className="text-xs font-bold truncate text-zinc-900 dark:text-zinc-100">{file.name}</h1>
+          </div>
         </div>
 
-        <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800 p-1 rounded-xl">
+        <div className="h-8 w-px bg-zinc-200 dark:bg-zinc-800 mx-2" />
+
+        <div className="flex items-center gap-1 bg-zinc-100/50 dark:bg-zinc-800/50 p-1 rounded-xl">
           <ToolButton active={tool === 'select'} onClick={() => setTool('select')} icon={<MousePointer2 className="w-4 h-4" />} label="Select" />
           <ToolButton active={tool === 'text'} onClick={() => setTool('text')} icon={<TextIcon className="w-4 h-4" />} label="Text" />
           <ToolButton active={tool === 'rect'} onClick={() => setTool('rect')} icon={<Square className="w-4 h-4" />} label="Shape" />
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 bg-zinc-100 dark:bg-zinc-800 px-2 py-1 rounded-lg">
-            <button onClick={() => setZoom(z => Math.max(0.5, z - 0.1))} className="p-1 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded transition-colors"><MinusIcon className="w-3.5 h-3.5" /></button>
-            <span className="text-[11px] font-bold w-10 text-center">{Math.round(zoom * 100)}%</span>
-            <button onClick={() => setZoom(z => Math.min(2, z + 0.1))} className="p-1 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded transition-colors"><Plus className="w-3.5 h-3.5" /></button>
-          </div>
-          <button
-            onClick={handleSave}
-            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-1.5 rounded-lg font-bold text-xs transition-all shadow-md shadow-emerald-600/10"
-          >
-            <Download className="w-3.5 h-3.5" />
-            Export
-          </button>
-        </div>
-      </div>
+        <div className="h-8 w-px bg-zinc-200 dark:bg-zinc-800 mx-2" />
 
-      <div className="flex flex-1 overflow-hidden relative">
-        {/* Left Sidebar Toggle */}
-        <button 
-          onClick={() => setLeftSidebarOpen(!leftSidebarOpen)}
-          className={cn(
-            "absolute left-0 top-1/2 -translate-y-1/2 z-20 p-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-r-lg shadow-md hover:text-emerald-500 transition-all",
-            leftSidebarOpen ? "left-56" : "left-0"
-          )}
+        <div className="flex items-center gap-2 bg-zinc-100/50 dark:bg-zinc-800/50 px-2 py-1 rounded-xl">
+          <button onClick={() => setZoom(z => Math.max(0.5, z - 0.1))} className="p-1.5 hover:bg-white dark:hover:bg-zinc-700 rounded-lg transition-all active:scale-90"><MinusIcon className="w-3.5 h-3.5" /></button>
+          <span className="text-[11px] font-mono font-bold w-12 text-center text-zinc-600 dark:text-zinc-400">{Math.round(zoom * 100)}%</span>
+          <button onClick={() => setZoom(z => Math.min(2, z + 0.1))} className="p-1.5 hover:bg-white dark:hover:bg-zinc-700 rounded-lg transition-all active:scale-90"><Plus className="w-3.5 h-3.5" /></button>
+        </div>
+
+        <div className="h-8 w-px bg-zinc-200 dark:bg-zinc-800 mx-2" />
+
+        <button
+          onClick={handleSave}
+          className="flex items-center gap-2 bg-zinc-900 dark:bg-zinc-100 hover:bg-zinc-800 dark:hover:bg-white text-white dark:text-zinc-900 px-5 py-2 rounded-xl font-bold text-xs transition-all active:scale-95 shadow-lg shadow-black/10"
         >
-          {leftSidebarOpen ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+          <Download className="w-3.5 h-3.5" />
+          Export
         </button>
+      </motion.div>
 
-        {/* Left Sidebar: Pages */}
-        <div className={cn(
-          "bg-white dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 transition-all duration-300 overflow-hidden flex flex-col",
-          leftSidebarOpen ? "w-56" : "w-0"
-        )}>
-          <div className="p-4 border-b border-zinc-100 dark:border-zinc-800">
-            <h3 className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Pages</h3>
-          </div>
-          <div className="flex-1 overflow-y-auto p-3 space-y-3">
-            {Array.from({ length: pdfDoc?.numPages || 0 }).map((_, i) => (
-              <div
-                key={i}
-                onClick={() => setCurrentPage(i + 1)}
-                className={cn(
-                  "group relative aspect-[3/4] bg-zinc-50 dark:bg-zinc-800/50 rounded-lg border-2 transition-all cursor-pointer flex flex-col items-center justify-center gap-1",
-                  currentPage === i + 1 ? "border-emerald-500 bg-emerald-50/30 dark:bg-emerald-900/20" : "border-transparent hover:border-zinc-200 dark:hover:border-zinc-700"
-                )}
+      {/* Floating Properties Panel */}
+      <AnimatePresence>
+        {selectedId && (
+          <motion.div
+            initial={{ opacity: 0, x: 20, scale: 0.95 }}
+            animate={{ opacity: 1, x: 0, scale: 1 }}
+            exit={{ opacity: 0, x: 20, scale: 0.95 }}
+            className="absolute right-8 top-1/2 -translate-y-1/2 z-50 w-64 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-xl border border-zinc-200 dark:border-zinc-800 p-5 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.1)] ring-1 ring-black/5"
+          >
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Properties</h3>
+              <button 
+                onClick={() => setSelectedId(null)}
+                className="p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"
               >
-                <FileText className={cn("w-6 h-6 transition-colors", currentPage === i + 1 ? "text-emerald-500" : "text-zinc-300 group-hover:text-zinc-400")} />
-                <span className={cn("text-[9px] font-bold", currentPage === i + 1 ? "text-emerald-600" : "text-zinc-500")}>{i + 1}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Main Canvas Area */}
-        <div className="flex-1 overflow-auto bg-zinc-100 dark:bg-zinc-950 p-8 flex justify-center items-start scrollbar-hide" ref={containerRef}>
-          <div className="relative shadow-xl bg-white ring-1 ring-black/5" onClick={addElement}>
-            <canvas ref={canvasRef} className="block" />
-            
-            {/* Original Text Layer (Invisible but clickable) */}
-            <div className="absolute inset-0 pointer-events-none z-[5]">
-              {originalTextItems[currentPage]?.map((item, idx) => {
-                // Check if this text is already being edited
-                const isEditing = elements[currentPage]?.some(el => 
-                  el.type === 'original-text' && Math.abs(el.x - item.x) < 0.1 && Math.abs(el.y - item.y) < 0.1
-                );
-
-                return (
-                  <div
-                    key={idx}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleOriginalTextClick(item);
-                    }}
-                    style={{
-                      position: 'absolute',
-                      left: item.x * zoom,
-                      top: item.y * zoom,
-                      width: item.width * zoom,
-                      height: item.height * zoom,
-                      pointerEvents: tool === 'select' ? 'auto' : 'none',
-                      cursor: 'text',
-                      backgroundColor: isEditing ? 'white' : 'transparent',
-                    }}
-                    className={cn(
-                      "hover:bg-emerald-500/20 transition-colors border border-transparent hover:border-emerald-500/30",
-                      isEditing && "z-[5]"
-                    )}
-                  />
-                );
-              })}
+                <MinusIcon className="w-3.5 h-3.5" />
+              </button>
             </div>
 
-            {/* Overlay Elements */}
-            {elements[currentPage]?.map((el) => (
-              <div
-                key={el.id}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setSelectedId(el.id);
-                }}
-                style={{
-                  position: 'absolute',
-                  left: el.x * zoom,
-                  top: el.y * zoom,
-                  cursor: tool === 'select' ? 'move' : 'default',
-                  border: selectedId === el.id ? '2px solid #10b981' : '1px dashed transparent',
-                  padding: '4px',
-                  minWidth: el.type === 'text' || el.type === 'original-text' ? '50px' : (el.width || 0) * zoom,
-                  minHeight: el.type === 'text' || el.type === 'original-text' ? '20px' : (el.height || 0) * zoom,
-                  backgroundColor: el.type === 'rect' ? el.color + '40' : (el.type === 'original-text' ? 'white' : 'transparent'),
-                  zIndex: selectedId === el.id ? 10 : 6,
-                }}
-                className="group"
-              >
-                {el.type === 'text' || el.type === 'original-text' ? (
-                  <input
-                    value={el.content}
-                    onChange={(e) => updateElement(el.id, { content: e.target.value })}
-                    style={{
-                      fontSize: `${(el.fontSize || 16) * zoom}px`,
-                      color: el.color,
-                      backgroundColor: 'transparent',
-                      border: 'none',
-                      outline: 'none',
-                      width: '100%',
-                      fontFamily: 'inherit',
-                    }}
-                  />
-                ) : (
-                  <div style={{ width: el.width, height: el.height }} />
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
+            <div className="space-y-6">
+              {(() => {
+                const allElements: EditorElement[] = (Object.values(elements) as EditorElement[][]).flat();
+                const el = allElements.find(e => e.id === selectedId);
+                if (!el) return null;
 
-        {/* Right Sidebar Toggle */}
-        <button 
-          onClick={() => setRightSidebarOpen(!rightSidebarOpen)}
-          className={cn(
-            "absolute right-0 top-1/2 -translate-y-1/2 z-20 p-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-l-lg shadow-md hover:text-emerald-500 transition-all",
-            rightSidebarOpen ? "right-64" : "right-0"
-          )}
-        >
-          {rightSidebarOpen ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
-        </button>
-
-        {/* Right Sidebar: Properties */}
-        <div className={cn(
-          "bg-white dark:bg-zinc-900 border-l border-zinc-200 dark:border-zinc-800 transition-all duration-300 overflow-hidden flex flex-col",
-          rightSidebarOpen ? "w-64" : "w-0"
-        )}>
-          <div className="p-4 border-b border-zinc-100 dark:border-zinc-800">
-            <h3 className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Properties</h3>
-          </div>
-          
-          <div className="flex-1 overflow-y-auto p-5">
-            {selectedElement ? (
-              <div className="space-y-6">
-                {(selectedElement.type === 'text' || selectedElement.type === 'original-text') && (
+                return (
                   <>
+                    {(el.type === 'text' || el.type === 'original-text') && (
+                      <>
+                        <div className="space-y-3">
+                          <label className="text-[11px] font-bold text-zinc-500 uppercase flex items-center gap-2">
+                            <Type className="w-3 h-3" /> Font Size
+                          </label>
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="range"
+                              min="8"
+                              max="72"
+                              value={el.fontSize}
+                              onChange={(e) => {
+                                const pageNum = Object.keys(elements).find(p => elements[parseInt(p)].some(e => e.id === selectedId));
+                                if (pageNum) handleUpdateElement(parseInt(pageNum), selectedId, { fontSize: parseInt(e.target.value) });
+                              }}
+                              className="flex-1 accent-zinc-900 dark:accent-zinc-100"
+                            />
+                            <span className="text-[11px] font-mono font-bold bg-zinc-100 dark:bg-zinc-800 px-2 py-1 rounded-lg">{el.fontSize}</span>
+                          </div>
+                        </div>
+
+                        <div className="space-y-3">
+                          <label className="text-[11px] font-bold text-zinc-500 uppercase flex items-center gap-2">
+                            <AlignLeft className="w-3 h-3" /> Alignment
+                          </label>
+                          <div className="flex gap-1 bg-zinc-100 dark:bg-zinc-800 p-1 rounded-xl">
+                            <button onClick={() => {
+                                const pageNum = Object.keys(elements).find(p => elements[parseInt(p)].some(e => e.id === selectedId));
+                                if (pageNum) handleUpdateElement(parseInt(pageNum), selectedId, { alignment: 'left' });
+                            }} className={cn("flex-1 p-2 rounded-lg transition-all", el.alignment === 'left' ? "bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-zinc-100" : "text-zinc-400")}><AlignLeft className="w-4 h-4 mx-auto" /></button>
+                            <button onClick={() => {
+                                const pageNum = Object.keys(elements).find(p => elements[parseInt(p)].some(e => e.id === selectedId));
+                                if (pageNum) handleUpdateElement(parseInt(pageNum), selectedId, { alignment: 'center' });
+                            }} className={cn("flex-1 p-2 rounded-lg transition-all", el.alignment === 'center' ? "bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-zinc-100" : "text-zinc-400")}><AlignCenter className="w-4 h-4 mx-auto" /></button>
+                            <button onClick={() => {
+                                const pageNum = Object.keys(elements).find(p => elements[parseInt(p)].some(e => e.id === selectedId));
+                                if (pageNum) handleUpdateElement(parseInt(pageNum), selectedId, { alignment: 'right' });
+                            }} className={cn("flex-1 p-2 rounded-lg transition-all", el.alignment === 'right' ? "bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-zinc-100" : "text-zinc-400")}><AlignRight className="w-4 h-4 mx-auto" /></button>
+                          </div>
+                        </div>
+                      </>
+                    )}
+
                     <div className="space-y-3">
-                      <label className="text-[11px] font-bold text-zinc-500 uppercase">Font Size</label>
-                      <div className="flex items-center gap-3">
-                        <input
-                          type="range"
-                          min="8"
-                          max="72"
-                          value={selectedElement.fontSize}
-                          onChange={(e) => updateElement(selectedId!, { fontSize: parseInt(e.target.value) })}
-                          className="flex-1 accent-emerald-500"
-                        />
-                        <span className="text-[11px] font-mono font-bold bg-zinc-100 dark:bg-zinc-800 px-2 py-1 rounded">{selectedElement.fontSize}</span>
+                      <label className="text-[11px] font-bold text-zinc-500 uppercase flex items-center gap-2">
+                        <Palette className="w-3 h-3" /> Color
+                      </label>
+                      <div className="grid grid-cols-4 gap-2">
+                        {['#000000', '#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#ffffff'].map(c => (
+                          <button
+                            key={c}
+                            onClick={() => {
+                                const pageNum = Object.keys(elements).find(p => elements[parseInt(p)].some(e => e.id === selectedId));
+                                if (pageNum) handleUpdateElement(parseInt(pageNum), selectedId, { color: c });
+                            }}
+                            className={cn(
+                              "w-full aspect-square rounded-full border border-zinc-200 dark:border-zinc-700 transition-transform hover:scale-110 active:scale-90",
+                              el.color === c && "ring-2 ring-zinc-900 dark:ring-zinc-100 ring-offset-2 dark:ring-offset-zinc-900"
+                            )}
+                            style={{ backgroundColor: c }}
+                          />
+                        ))}
                       </div>
                     </div>
 
-                    <div className="space-y-3">
-                      <label className="text-[11px] font-bold text-zinc-500 uppercase">Alignment</label>
-                      <div className="flex gap-1 bg-zinc-100 dark:bg-zinc-800 p-1 rounded-lg">
-                        <button onClick={() => updateElement(selectedId!, { alignment: 'left' })} className={cn("flex-1 p-1.5 rounded transition-all", selectedElement.alignment === 'left' ? "bg-white dark:bg-zinc-700 shadow-sm text-emerald-500" : "text-zinc-400")}><AlignLeft className="w-4 h-4 mx-auto" /></button>
-                        <button onClick={() => updateElement(selectedId!, { alignment: 'center' })} className={cn("flex-1 p-1.5 rounded transition-all", selectedElement.alignment === 'center' ? "bg-white dark:bg-zinc-700 shadow-sm text-emerald-500" : "text-zinc-400")}><AlignCenter className="w-4 h-4 mx-auto" /></button>
-                        <button onClick={() => updateElement(selectedId!, { alignment: 'right' })} className={cn("flex-1 p-1.5 rounded transition-all", selectedElement.alignment === 'right' ? "bg-white dark:bg-zinc-700 shadow-sm text-emerald-500" : "text-zinc-400")}><AlignRight className="w-4 h-4 mx-auto" /></button>
-                      </div>
+                    <div className="pt-4 border-t border-zinc-100 dark:border-zinc-800">
+                      <button
+                        onClick={handleDeleteElement}
+                        className="w-full py-3 bg-rose-50 dark:bg-rose-900/10 text-rose-600 dark:text-rose-400 rounded-2xl font-bold text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-rose-100 dark:hover:bg-rose-900/20 transition-all active:scale-95 border border-rose-100 dark:border-rose-900/30"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Delete Element
+                      </button>
                     </div>
                   </>
-                )}
+                );
+              })()}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-                <div className="space-y-3">
-                  <label className="text-[11px] font-bold text-zinc-500 uppercase">Color</label>
-                  <div className="grid grid-cols-4 gap-2">
-                    {['#000000', '#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#ffffff'].map(c => (
-                      <button
-                        key={c}
-                        onClick={() => updateElement(selectedId!, { color: c })}
-                        className={cn(
-                          "w-full aspect-square rounded-lg border border-zinc-200 dark:border-zinc-700 transition-transform hover:scale-110",
-                          selectedElement.color === c && "ring-2 ring-emerald-500 ring-offset-2 dark:ring-offset-zinc-900"
-                        )}
-                        style={{ backgroundColor: c }}
-                      />
-                    ))}
-                  </div>
-                </div>
-
-                <div className="pt-4">
-                  <button
-                    onClick={() => deleteElement(selectedId!)}
-                    className="w-full py-2.5 bg-rose-50 dark:bg-rose-900/10 text-rose-600 dark:text-rose-400 rounded-lg font-bold text-xs flex items-center justify-center gap-2 hover:bg-rose-100 dark:hover:bg-rose-900/20 transition-all border border-rose-100 dark:border-rose-900/30"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    Remove Element
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="text-center py-20 opacity-40">
-                <MousePointer2 className="w-8 h-8 mx-auto mb-3" />
-                <p className="text-[10px] font-bold uppercase tracking-widest">No Selection</p>
-                <p className="text-[9px] mt-1">Select an annotation to edit</p>
-              </div>
-            )}
-          </div>
+      {/* Main Scrollable Area */}
+      <div className="flex-1 overflow-auto bg-[#F8F9FA] dark:bg-zinc-950 p-24 flex flex-col items-center scroll-smooth">
+        <div className="max-w-5xl w-full flex flex-col items-center">
+          {pdfDoc && Array.from({ length: pdfDoc.numPages }).map((_, i) => (
+            <PDFPage
+              key={i + 1}
+              pdfDoc={pdfDoc}
+              pageNumber={i + 1}
+              zoom={zoom}
+              tool={tool}
+              elements={elements[i + 1] || []}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+              onUpdateElement={(id, updates) => handleUpdateElement(i + 1, id, updates)}
+              onAddElement={(el) => handleAddElement(i + 1, el)}
+              onOriginalTextClick={(item) => handleOriginalTextClick(i + 1, item)}
+              originalTextItems={originalTextItems[i + 1] || []}
+              setOriginalTextItems={(items) => setOriginalTextItems(prev => ({ ...prev, [i + 1]: items }))}
+            />
+          ))}
         </div>
       </div>
     </div>
@@ -548,12 +617,14 @@ const ToolButton = ({ active, onClick, icon, label }: { active: boolean; onClick
   <button
     onClick={onClick}
     className={cn(
-      "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
-      active ? "bg-white dark:bg-zinc-700 text-emerald-600 dark:text-emerald-400 shadow-sm" : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+      "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all duration-200 active:scale-95",
+      active 
+        ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm ring-1 ring-black/5" 
+        : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-white/50 dark:hover:bg-zinc-800/50"
     )}
   >
     {icon}
-    {label}
+    <span className="hidden sm:inline">{label}</span>
   </button>
 );
 
