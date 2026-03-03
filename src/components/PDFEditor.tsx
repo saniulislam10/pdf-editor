@@ -31,7 +31,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
 interface EditorElement {
   id: string;
-  type: 'text' | 'rect' | 'circle';
+  type: 'text' | 'rect' | 'circle' | 'original-text';
   x: number;
   y: number;
   width?: number;
@@ -41,6 +41,8 @@ interface EditorElement {
   color?: string;
   fontFamily?: string;
   alignment?: 'left' | 'center' | 'right';
+  originalWidth?: number;
+  originalHeight?: number;
 }
 
 const hexToRgb = (hex: string) => {
@@ -54,6 +56,7 @@ export const PDFEditor: React.FC<{ file: File; onBack: () => void }> = ({ file, 
   const [pdfDoc, setPdfDoc] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [elements, setElements] = useState<Record<number, EditorElement[]>>({});
+  const [originalTextItems, setOriginalTextItems] = useState<Record<number, any[]>>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tool, setTool] = useState<'select' | 'text' | 'rect'>('select');
   const [zoom, setZoom] = useState(1.0);
@@ -101,6 +104,30 @@ export const PDFEditor: React.FC<{ file: File; onBack: () => void }> = ({ file, 
 
         renderTask = page.render({ canvasContext: context, viewport });
         await renderTask.promise;
+
+        // Extract text content for editing
+        if (!originalTextItems[currentPage]) {
+          const textContent = await page.getTextContent();
+          const items = textContent.items.map((item: any) => {
+            // Transform matrix from PDF space to Viewport space
+            const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
+            const fontSize = Math.sqrt(item.transform[0] * item.transform[0] + item.transform[1] * item.transform[1]);
+            
+            // tx[5] is the baseline in viewport pixels (top-down)
+            // We want the top of the text
+            const scaledFontSize = fontSize * (zoom * 2);
+            
+            return {
+              str: item.str,
+              x: tx[4] / (zoom * 2),
+              y: (tx[5] - scaledFontSize) / (zoom * 2),
+              width: item.width || (item.str.length * fontSize * 0.5),
+              height: fontSize,
+              fontSize: fontSize,
+            };
+          });
+          setOriginalTextItems(prev => ({ ...prev, [currentPage]: items }));
+        }
       } catch (error: any) {
         if (error.name === 'RenderingCancelledException') {
           return;
@@ -117,6 +144,40 @@ export const PDFEditor: React.FC<{ file: File; onBack: () => void }> = ({ file, 
       }
     };
   }, [pdfDoc, currentPage, zoom]);
+
+  const handleOriginalTextClick = (item: any) => {
+    if (tool !== 'select') return;
+
+    // Check if we already have an element for this original text
+    const existing = elements[currentPage]?.find(el => 
+      el.type === 'original-text' && Math.abs(el.x - item.x) < 1 && Math.abs(el.y - item.y) < 1
+    );
+
+    if (existing) {
+      setSelectedId(existing.id);
+      return;
+    }
+
+    const newElement: EditorElement = {
+      id: Math.random().toString(36).substr(2, 9),
+      type: 'original-text',
+      x: item.x,
+      y: item.y,
+      content: item.str,
+      fontSize: item.fontSize,
+      color: '#000000',
+      width: item.width,
+      height: item.height,
+      originalWidth: item.width,
+      originalHeight: item.height,
+    };
+
+    setElements(prev => ({
+      ...prev,
+      [currentPage]: [...(prev[currentPage] || []), newElement]
+    }));
+    setSelectedId(newElement.id);
+  };
 
   const addElement = (e: React.MouseEvent) => {
     if (tool === 'select') return;
@@ -174,7 +235,24 @@ export const PDFEditor: React.FC<{ file: File; onBack: () => void }> = ({ file, 
       const { height } = page.getSize();
 
       for (const el of pageElements) {
-        if (el.type === 'text') {
+        if (el.type === 'original-text') {
+          // White out the original text area
+          page.drawRectangle({
+            x: el.x,
+            y: height - el.y - (el.originalHeight || 0),
+            width: (el.originalWidth || 0) * 1.1,
+            height: (el.originalHeight || 0) * 1.2,
+            color: rgb(1, 1, 1),
+          });
+          // Draw new text
+          page.drawText(el.content || '', {
+            x: el.x,
+            y: height - el.y - (el.fontSize || 16),
+            size: el.fontSize,
+            font: font,
+            color: hexToRgb(el.color || '#000000'),
+          });
+        } else if (el.type === 'text') {
           page.drawText(el.content || '', {
             x: el.x,
             y: height - el.y - (el.fontSize || 16),
@@ -296,6 +374,40 @@ export const PDFEditor: React.FC<{ file: File; onBack: () => void }> = ({ file, 
           <div className="relative shadow-xl bg-white ring-1 ring-black/5" onClick={addElement}>
             <canvas ref={canvasRef} className="block" />
             
+            {/* Original Text Layer (Invisible but clickable) */}
+            <div className="absolute inset-0 pointer-events-none z-[5]">
+              {originalTextItems[currentPage]?.map((item, idx) => {
+                // Check if this text is already being edited
+                const isEditing = elements[currentPage]?.some(el => 
+                  el.type === 'original-text' && Math.abs(el.x - item.x) < 0.1 && Math.abs(el.y - item.y) < 0.1
+                );
+
+                return (
+                  <div
+                    key={idx}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleOriginalTextClick(item);
+                    }}
+                    style={{
+                      position: 'absolute',
+                      left: item.x * zoom,
+                      top: item.y * zoom,
+                      width: item.width * zoom,
+                      height: item.height * zoom,
+                      pointerEvents: tool === 'select' ? 'auto' : 'none',
+                      cursor: 'text',
+                      backgroundColor: isEditing ? 'white' : 'transparent',
+                    }}
+                    className={cn(
+                      "hover:bg-emerald-500/20 transition-colors border border-transparent hover:border-emerald-500/30",
+                      isEditing && "z-[5]"
+                    )}
+                  />
+                );
+              })}
+            </div>
+
             {/* Overlay Elements */}
             {elements[currentPage]?.map((el) => (
               <div
@@ -311,14 +423,14 @@ export const PDFEditor: React.FC<{ file: File; onBack: () => void }> = ({ file, 
                   cursor: tool === 'select' ? 'move' : 'default',
                   border: selectedId === el.id ? '2px solid #10b981' : '1px dashed transparent',
                   padding: '4px',
-                  minWidth: el.type === 'text' ? '50px' : (el.width || 0) * zoom,
-                  minHeight: el.type === 'text' ? '20px' : (el.height || 0) * zoom,
-                  backgroundColor: el.type === 'rect' ? el.color + '40' : 'transparent',
-                  zIndex: selectedId === el.id ? 10 : 1,
+                  minWidth: el.type === 'text' || el.type === 'original-text' ? '50px' : (el.width || 0) * zoom,
+                  minHeight: el.type === 'text' || el.type === 'original-text' ? '20px' : (el.height || 0) * zoom,
+                  backgroundColor: el.type === 'rect' ? el.color + '40' : (el.type === 'original-text' ? 'white' : 'transparent'),
+                  zIndex: selectedId === el.id ? 10 : 6,
                 }}
                 className="group"
               >
-                {el.type === 'text' ? (
+                {el.type === 'text' || el.type === 'original-text' ? (
                   <input
                     value={el.content}
                     onChange={(e) => updateElement(el.id, { content: e.target.value })}
@@ -363,7 +475,7 @@ export const PDFEditor: React.FC<{ file: File; onBack: () => void }> = ({ file, 
           <div className="flex-1 overflow-y-auto p-5">
             {selectedElement ? (
               <div className="space-y-6">
-                {selectedElement.type === 'text' && (
+                {(selectedElement.type === 'text' || selectedElement.type === 'original-text') && (
                   <>
                     <div className="space-y-3">
                       <label className="text-[11px] font-bold text-zinc-500 uppercase">Font Size</label>
