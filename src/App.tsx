@@ -8,7 +8,7 @@ import {
   Type, 
   RotateCw, 
   Lock, 
-  Unlock, 
+  Shield, 
   FileImage, 
   FileText,
   Moon,
@@ -57,6 +57,7 @@ export default function App() {
   const [editorFile, setEditorFile] = useState<File | null>(null);
   const { user, logout, openAuthModal } = useAuth();
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
+  const [pendingTool, setPendingTool] = useState<ToolType | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -69,19 +70,20 @@ export default function App() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // When user signs in, if they attempted to open a tool, automatically open it
   useEffect(() => {
-    if (isDarkMode) {
-      document.documentElement.classList.add('dark');
-      try {
-        localStorage.setItem('pdfcraft_theme', 'dark');
-      } catch {}
-    } else {
-      document.documentElement.classList.remove('dark');
-      try {
-        localStorage.setItem('pdfcraft_theme', 'light');
-      } catch {}
+    if (user && pendingTool) {
+      setActiveTool(pendingTool);
+      setPendingTool(null);
     }
-  }, [isDarkMode]);
+  }, [user, pendingTool]);
+
+  // If user logs out while in a tool, return to home
+  useEffect(() => {
+    if (!user && activeTool !== 'home' && activeTool !== 'account') {
+      setActiveTool('home');
+    }
+  }, [user, activeTool]);
 
   const tools = [
     { id: 'compress', name: 'Compress PDF', icon: <Zap className="w-6 h-6" />, description: 'Reduce file size while keeping high quality.', color: 'bg-red-600' },
@@ -95,7 +97,77 @@ export default function App() {
     { id: 'security', name: 'Security', icon: <Lock className="w-6 h-6" />, description: 'Protect with password or unlock your PDF.', color: 'bg-red-600' },
   ];
 
+  const handleSelectTool = (toolId: ToolType) => {
+    if (toolId === 'home') {
+      setActiveTool('home');
+      setEditorFile(null);
+      return;
+    }
+    if (toolId === 'account') {
+      if (!user) {
+        openAuthModal('login', 'Please sign in to view your account profile.');
+        return;
+      }
+      setActiveTool('account');
+      return;
+    }
+    // Strict requirement: Users must login to use any tool
+    if (!user) {
+      setPendingTool(toolId);
+      const toolObj = tools.find(t => t.id === toolId);
+      openAuthModal('login', `Please sign in or create an account to use ${toolObj?.name || 'this tool'}.`);
+      return;
+    }
+    setActiveTool(toolId);
+    if (toolId !== 'edit') setEditorFile(null);
+  };
+
   const renderTool = () => {
+    // If not logged in and trying to access any tool
+    if (!user && activeTool !== 'home' && activeTool !== 'account') {
+      const currentToolObj = tools.find(t => t.id === activeTool);
+      return (
+        <div className="max-w-md mx-auto py-12 px-8 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl shadow-xl text-center space-y-6">
+          <div className="w-16 h-16 mx-auto bg-red-50 dark:bg-red-950/40 text-red-600 rounded-2xl flex items-center justify-center shadow-lg shadow-red-600/10">
+            <Lock className="w-8 h-8" />
+          </div>
+          <div className="space-y-2">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-red-100 dark:bg-red-950/50 text-red-700 dark:text-red-400 uppercase tracking-wider">
+              Login Required
+            </span>
+            <h2 className="text-2xl font-black tracking-tight text-zinc-900 dark:text-zinc-100">
+              Sign In to Use {currentToolObj?.name || 'PDF Tools'}
+            </h2>
+            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+              You must be logged in to process, merge, compress, or edit documents with PDF Craft.
+            </p>
+          </div>
+          <div className="space-y-3 pt-2">
+            <button
+              onClick={() => openAuthModal('login', `Sign in to access ${currentToolObj?.name || 'this tool'}.`)}
+              className="w-full py-3 bg-red-600 hover:bg-red-700 text-white font-bold text-sm rounded-xl shadow-md shadow-red-600/20 transition-all cursor-pointer"
+            >
+              Sign In to Continue
+            </button>
+            <button
+              onClick={() => openAuthModal('register', `Create a free account to access ${currentToolObj?.name || 'this tool'}.`)}
+              className="w-full py-2.5 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 font-bold text-sm rounded-xl transition-all cursor-pointer"
+            >
+              Create Free Account
+            </button>
+            <div>
+              <button
+                onClick={() => setActiveTool('home')}
+                className="inline-block text-xs font-bold text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200 pt-2 cursor-pointer"
+              >
+                ← Back to All Tools
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     switch (activeTool) {
       case 'compress': return <CompressionTool />;
       case 'merge': return <MergeTool />;
@@ -146,10 +218,7 @@ export default function App() {
               ].map((item) => (
                 <button
                   key={item.id}
-                  onClick={() => {
-                    setActiveTool(item.id as ToolType);
-                    if (item.id !== 'edit') setEditorFile(null);
-                  }}
+                  onClick={() => handleSelectTool(item.id as ToolType)}
                   className={cn(
                     "text-xs font-black tracking-wider uppercase transition-colors py-1",
                     activeTool === item.id 
@@ -343,15 +412,23 @@ export default function App() {
                 <button
                   key={tool.id}
                   onClick={() => {
-                    setActiveTool(tool.id as ToolType);
+                    handleSelectTool(tool.id as ToolType);
                     setIsMenuOpen(false);
                   }}
-                  className="w-full flex items-center gap-4 p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-100 dark:border-zinc-700"
+                  className="w-full flex items-center justify-between p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-100 dark:border-zinc-700"
                 >
-                  <div className={cn("p-2 rounded-lg text-white", tool.color)}>
-                    {tool.icon}
+                  <div className="flex items-center gap-4">
+                    <div className={cn("p-2 rounded-lg text-white", tool.color)}>
+                      {tool.icon}
+                    </div>
+                    <span className="font-bold">{tool.name}</span>
                   </div>
-                  <span className="font-bold">{tool.name}</span>
+                  {!user && (
+                    <div className="flex items-center gap-1 text-xs text-zinc-400 font-medium">
+                      <Lock className="w-3.5 h-3.5" />
+                      <span>Sign In</span>
+                    </div>
+                  )}
                 </button>
               ))}
             </div>
@@ -400,9 +477,15 @@ export default function App() {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.1 * index }}
-                  onClick={() => setActiveTool(tool.id as ToolType)}
+                  onClick={() => handleSelectTool(tool.id as ToolType)}
                   className="group relative bg-white dark:bg-zinc-900 p-8 rounded-[2rem] border border-zinc-200 dark:border-zinc-800 shadow-sm hover:shadow-2xl hover:shadow-red-500/10 transition-all cursor-pointer overflow-hidden"
                 >
+                  {!user && (
+                    <div className="absolute top-6 right-6 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-100 dark:bg-zinc-800 text-[11px] font-bold text-zinc-500 dark:text-zinc-400 group-hover:bg-red-50 group-hover:text-red-600 dark:group-hover:bg-red-950/40 dark:group-hover:text-red-400 transition-colors">
+                      <Lock className="w-3 h-3" />
+                      <span>Sign In</span>
+                    </div>
+                  )}
                   <div className={cn(
                     "w-14 h-14 rounded-2xl flex items-center justify-center text-white mb-6 transition-transform group-hover:scale-110 group-hover:rotate-3 shadow-lg shadow-red-600/20",
                     tool.color
@@ -446,8 +529,8 @@ export default function App() {
                       Instant Processing
                     </div>
                     <div className="flex items-center gap-2 bg-white/10 px-4 py-2 rounded-full text-sm">
-                      <Unlock className="w-4 h-4 text-red-400" />
-                      No Account Needed
+                      <Shield className="w-4 h-4 text-red-400" />
+                      Secure Member Access
                     </div>
                   </div>
                 </div>

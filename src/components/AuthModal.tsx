@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { AuthModalTab } from '../types/auth';
 
 export const AuthModal: React.FC = () => {
-  const { isAuthModalOpen, closeAuthModal, authModalTab, openAuthModal, login, register, loginWithGoogle, forgotPassword } = useAuth();
+  const { isAuthModalOpen, closeAuthModal, authModalTab, authModalPrompt, openAuthModal, login, register, loginWithGoogle, forgotPassword } = useAuth();
 
   const [activeTab, setActiveTab] = useState<AuthModalTab>(authModalTab);
   const [name, setName] = useState('');
@@ -125,6 +125,18 @@ export const AuthModal: React.FC = () => {
           </div>
 
           <div className="p-6 space-y-5">
+            {/* Context Prompt Notification */}
+            {authModalPrompt && (
+              <motion.div
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex items-center gap-2.5 p-3.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 rounded-xl text-xs text-amber-900 dark:text-amber-200 font-semibold"
+              >
+                <Lock className="w-4 h-4 shrink-0 text-amber-600" />
+                <span>{authModalPrompt}</span>
+              </motion.div>
+            )}
+
             {/* Error Notification */}
             {errorMessage && (
               <motion.div

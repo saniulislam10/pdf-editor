@@ -6,8 +6,9 @@ interface AuthContextType {
   loading: boolean;
   isAuthModalOpen: boolean;
   authModalTab: AuthModalTab;
+  authModalPrompt: string | null;
   resetToken: string | null;
-  openAuthModal: (tab?: AuthModalTab) => void;
+  openAuthModal: (tab?: AuthModalTab, prompt?: string | null) => void;
   closeAuthModal: () => void;
   setResetToken: (token: string | null) => void;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
@@ -29,6 +30,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState<boolean>(true);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [authModalTab, setAuthModalTab] = useState<AuthModalTab>('login');
+  const [authModalPrompt, setAuthModalPrompt] = useState<string | null>(null);
   const [resetToken, setResetToken] = useState<string | null>(null);
 
   // Helper to make authenticated fetch requests
@@ -113,13 +115,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => window.removeEventListener('message', handleOAuthMessage);
   }, []);
 
-  const openAuthModal = (tab: AuthModalTab = 'login') => {
+  const openAuthModal = (tab: AuthModalTab = 'login', prompt: string | null = null) => {
     setAuthModalTab(tab);
+    setAuthModalPrompt(prompt);
     setIsAuthModalOpen(true);
   };
 
   const closeAuthModal = () => {
     setIsAuthModalOpen(false);
+    setAuthModalPrompt(null);
   };
 
   const login = async (email: string, password: string) => {
@@ -281,6 +285,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loading,
         isAuthModalOpen,
         authModalTab,
+        authModalPrompt,
         resetToken,
         openAuthModal,
         closeAuthModal,
