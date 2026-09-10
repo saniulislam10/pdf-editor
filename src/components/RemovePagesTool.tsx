@@ -62,8 +62,8 @@ export const RemovePagesTool: React.FC = () => {
             <div className="space-y-6">
               <div className="flex items-center justify-between bg-white dark:bg-zinc-900 p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm">
                 <div className="flex items-center gap-4">
-                  <div className="bg-rose-100 dark:bg-rose-900/30 p-2 rounded-lg">
-                    <Trash2 className="w-5 h-5 text-rose-600 dark:text-rose-400" />
+                  <div className="bg-red-100 dark:bg-red-900/30 p-2 rounded-lg">
+                    <Trash2 className="w-5 h-5 text-red-600 dark:text-red-400" />
                   </div>
                   <div>
                     <p className="text-sm font-bold">{selectedPages.length} pages selected for removal</p>
@@ -73,7 +73,7 @@ export const RemovePagesTool: React.FC = () => {
                 <button
                   onClick={handleRemove}
                   disabled={processing || selectedPages.length === 0}
-                  className="px-6 py-2.5 bg-rose-600 hover:bg-rose-700 disabled:bg-zinc-400 text-white rounded-xl font-bold flex items-center gap-2 transition-all"
+                  className="px-6 py-2.5 bg-red-600 hover:bg-red-700 disabled:bg-zinc-400 text-white rounded-xl font-bold flex items-center gap-2 transition-all shadow-md shadow-red-600/20"
                 >
                   {processing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                   Remove Selected
@@ -92,8 +92,8 @@ export const RemovePagesTool: React.FC = () => {
         </div>
       ) : (
         <div className="bg-white dark:bg-zinc-900 p-8 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-xl text-center space-y-6">
-          <div className="inline-flex p-4 bg-emerald-100 dark:bg-emerald-900/30 rounded-full">
-            <Check className="w-12 h-12 text-emerald-600 dark:text-emerald-400" />
+          <div className="inline-flex p-4 bg-red-100 dark:bg-red-900/30 rounded-full">
+            <Check className="w-12 h-12 text-red-600 dark:text-red-400" />
           </div>
           <div>
             <h3 className="text-2xl font-bold mb-2">Pages Removed!</h3>
@@ -103,7 +103,7 @@ export const RemovePagesTool: React.FC = () => {
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <button
               onClick={download}
-              className="px-8 py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-600/20"
+              className="px-8 py-4 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-red-600/20"
             >
               <Download className="w-5 h-5" />
               Download Updated PDF

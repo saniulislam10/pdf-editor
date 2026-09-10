@@ -68,8 +68,8 @@ export const RotateTool: React.FC = () => {
             <div className="space-y-6">
               <div className="flex items-center justify-between bg-white dark:bg-zinc-900 p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm">
                 <div className="flex items-center gap-4">
-                  <div className="bg-amber-100 dark:bg-amber-900/30 p-2 rounded-lg">
-                    <RotateCw className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                  <div className="bg-red-100 dark:bg-red-900/30 p-2 rounded-lg">
+                    <RotateCw className="w-5 h-5 text-red-600 dark:text-red-400" />
                   </div>
                   <div>
                     <p className="text-sm font-bold">{Object.keys(rotations).length} pages modified</p>
@@ -79,7 +79,7 @@ export const RotateTool: React.FC = () => {
                 <button
                   onClick={handleProcess}
                   disabled={processing}
-                  className="px-6 py-2.5 bg-amber-600 hover:bg-amber-700 disabled:bg-zinc-400 text-white rounded-xl font-bold flex items-center gap-2 transition-all"
+                  className="px-6 py-2.5 bg-red-600 hover:bg-red-700 disabled:bg-zinc-400 text-white rounded-xl font-bold flex items-center gap-2 transition-all shadow-md shadow-red-600/20"
                 >
                   {processing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCw className="w-4 h-4" />}
                   Apply Rotations
@@ -101,8 +101,8 @@ export const RotateTool: React.FC = () => {
         </div>
       ) : (
         <div className="bg-white dark:bg-zinc-900 p-8 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-xl text-center space-y-6">
-          <div className="inline-flex p-4 bg-emerald-100 dark:bg-emerald-900/30 rounded-full">
-            <Check className="w-12 h-12 text-emerald-600 dark:text-emerald-400" />
+          <div className="inline-flex p-4 bg-red-100 dark:bg-red-900/30 rounded-full">
+            <Check className="w-12 h-12 text-red-600 dark:text-red-400" />
           </div>
           <div>
             <h3 className="text-2xl font-bold mb-2">PDF Rotated!</h3>
@@ -112,7 +112,7 @@ export const RotateTool: React.FC = () => {
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <button
               onClick={download}
-              className="px-8 py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-600/20"
+              className="px-8 py-4 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-red-600/20"
             >
               <Download className="w-5 h-5" />
               Download Rotated PDF

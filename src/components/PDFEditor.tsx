@@ -6,36 +6,35 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Type, 
   Square, 
-  Circle, 
-  Minus, 
-  Type as TextIcon, 
   MousePointer2, 
   Download, 
-  Save, 
-  Undo2, 
-  Redo2,
-  Plus,
-  Minus as MinusIcon,
-  Palette,
-  AlignLeft,
-  AlignCenter,
-  AlignRight,
-  Trash2,
-  ChevronLeft,
-  ChevronRight,
-  Loader2,
-  Settings2,
-  Layers,
-  Search
+  Plus, 
+  Minus as MinusIcon, 
+  Palette, 
+  AlignLeft, 
+  AlignCenter, 
+  AlignRight, 
+  Trash2, 
+  ChevronLeft, 
+  Loader2, 
+  Check, 
+  X, 
+  GripVertical,
+  Eraser,
+  RotateCcw,
+  ScanText,
+  Sparkles,
+  Copy
 } from 'lucide-react';
+import Tesseract from 'tesseract.js';
 import { cn } from '../utils/utils';
 
 // Set worker source
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
-interface EditorElement {
+export interface EditorElement {
   id: string;
-  type: 'text' | 'rect' | 'circle' | 'original-text';
+  type: 'text' | 'rect' | 'original-text';
   x: number;
   y: number;
   width?: number;
@@ -47,6 +46,16 @@ interface EditorElement {
   alignment?: 'left' | 'center' | 'right';
   originalWidth?: number;
   originalHeight?: number;
+  originalText?: string;
+}
+
+export interface DetectedTextItem {
+  str: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  fontSize: number;
 }
 
 const hexToRgb = (hex: string) => {
@@ -66,9 +75,8 @@ interface PDFPageProps {
   onSelect: (id: string | null) => void;
   onUpdateElement: (id: string, updates: Partial<EditorElement>) => void;
   onAddElement: (el: EditorElement) => void;
-  onOriginalTextClick: (item: any) => void;
-  originalTextItems: any[];
-  setOriginalTextItems: (items: any[]) => void;
+  onOriginalTextClick: (item: DetectedTextItem) => void;
+  originalTextItems: DetectedTextItem[];
 }
 
 const PDFPage: React.FC<PDFPageProps> = ({
@@ -83,21 +91,63 @@ const PDFPage: React.FC<PDFPageProps> = ({
   onAddElement,
   onOriginalTextClick,
   originalTextItems,
-  setOriginalTextItems,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const activeTaskRef = useRef<pdfjsLib.RenderTask | null>(null);
   const [loading, setLoading] = useState(true);
+  const [dragging, setDragging] = useState<{ id: string; startClientX: number; startClientY: number; initX: number; initY: number } | null>(null);
+
+  // Dragging support for overlay elements
+  useEffect(() => {
+    if (!dragging) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const dx = (e.clientX - dragging.startClientX) / zoom;
+      const dy = (e.clientY - dragging.startClientY) / zoom;
+      onUpdateElement(dragging.id, {
+        x: Math.round(dragging.initX + dx),
+        y: Math.round(dragging.initY + dy),
+      });
+    };
+
+    const handleMouseUp = () => {
+      setDragging(null);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [dragging, zoom, onUpdateElement]);
 
   useEffect(() => {
-    let renderTask: pdfjsLib.RenderTask | null = null;
+    let isCancelled = false;
 
     const renderPage = async () => {
+      if (activeTaskRef.current) {
+        try {
+          activeTaskRef.current.cancel();
+          await activeTaskRef.current.promise.catch(() => {});
+        } catch {
+          // ignore
+        }
+        activeTaskRef.current = null;
+        await new Promise((r) => setTimeout(r, 20));
+      }
+
+      if (isCancelled || !canvasRef.current) return;
+
       setLoading(true);
       try {
         const page = await pdfDoc.getPage(pageNumber);
+        if (isCancelled || !canvasRef.current) return;
+
         const viewport = page.getViewport({ scale: zoom * 2.0 });
-        const canvas = canvasRef.current!;
-        const context = canvas.getContext('2d')!;
+        const canvas = canvasRef.current;
+        const context = canvas.getContext('2d');
+        if (!context) return;
 
         canvas.height = viewport.height;
         canvas.width = viewport.width;
@@ -105,40 +155,36 @@ const PDFPage: React.FC<PDFPageProps> = ({
         canvas.style.width = `${viewport.width / 2}px`;
         canvas.style.height = `${viewport.height / 2}px`;
 
-        renderTask = page.render({ canvasContext: context, viewport });
-        await renderTask.promise;
+        const renderTask = page.render({ canvasContext: context, viewport } as any);
+        activeTaskRef.current = renderTask;
 
-        if (originalTextItems.length === 0) {
-          const textContent = await page.getTextContent();
-          const items = textContent.items.map((item: any) => {
-            const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
-            const fontSize = Math.sqrt(item.transform[0] * item.transform[0] + item.transform[1] * item.transform[1]);
-            const scaledFontSize = fontSize * (zoom * 2);
-            
-            return {
-              str: item.str,
-              x: tx[4] / (zoom * 2),
-              y: (tx[5] - scaledFontSize) / (zoom * 2),
-              width: item.width || (item.str.length * fontSize * 0.5),
-              height: fontSize,
-              fontSize: fontSize,
-            };
-          });
-          setOriginalTextItems(items);
+        await renderTask.promise;
+        if (activeTaskRef.current === renderTask) {
+          activeTaskRef.current = null;
         }
       } catch (error: any) {
-        if (error.name !== 'RenderingCancelledException') {
+        if (error?.name !== 'RenderingCancelledException') {
           console.error('Error rendering page:', error);
         }
       } finally {
-        setLoading(false);
+        if (!isCancelled) {
+          setLoading(false);
+        }
       }
     };
 
     renderPage();
 
     return () => {
-      if (renderTask) renderTask.cancel();
+      isCancelled = true;
+      if (activeTaskRef.current) {
+        try {
+          activeTaskRef.current.cancel();
+        } catch {
+          // ignore
+        }
+        activeTaskRef.current = null;
+      }
     };
   }, [pdfDoc, pageNumber, zoom]);
 
@@ -157,11 +203,11 @@ const PDFPage: React.FC<PDFPageProps> = ({
     const newElement: EditorElement = {
       id: Math.random().toString(36).substr(2, 9),
       type: tool === 'text' ? 'text' : 'rect',
-      x,
-      y,
+      x: Math.round(x),
+      y: Math.round(y),
       content: tool === 'text' ? 'New Text' : '',
       fontSize: 16,
-      color: '#000000',
+      color: tool === 'text' ? '#000000' : '#ef4444',
       width: tool === 'rect' ? 100 : undefined,
       height: tool === 'rect' ? 50 : undefined,
     };
@@ -171,27 +217,30 @@ const PDFPage: React.FC<PDFPageProps> = ({
 
   return (
     <motion.div 
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
-      className="relative mb-12 flex flex-col items-center group"
+      className="relative mb-10 flex flex-col items-center group"
     >
-      <div className="absolute -top-8 left-0 flex items-center gap-2 px-3 py-1 bg-white dark:bg-zinc-800 rounded-full shadow-sm border border-zinc-200 dark:border-zinc-700 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-        <span className="text-[10px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest">
+      <div className="absolute -top-7 left-2 flex items-center gap-2 px-3 py-0.5 bg-white/90 dark:bg-zinc-800/90 backdrop-blur-sm rounded-full shadow-xs border border-zinc-200 dark:border-zinc-700 z-10">
+        <span className="text-[10px] font-bold text-zinc-600 dark:text-zinc-300 uppercase tracking-widest">
           Page {pageNumber}
+        </span>
+        <span className="text-[10px] text-zinc-400 dark:text-zinc-500 font-mono">
+          ({originalTextItems.length} text blocks detected)
         </span>
       </div>
       
       <div 
-        className="relative shadow-[0_20px_50px_rgba(0,0,0,0.1)] bg-white ring-1 ring-black/5 rounded-sm overflow-hidden" 
+        className="relative shadow-[0_20px_50px_rgba(0,0,0,0.08)] bg-white ring-1 ring-black/5 rounded-xs overflow-hidden" 
         onClick={handleCanvasClick}
       >
         <canvas ref={canvasRef} className="block" />
         
-        {/* Original Text Layer */}
+        {/* Detected Text Layer for Direct Interactive Selection */}
         <div className="absolute inset-0 z-[5]">
           {originalTextItems.map((item, idx) => {
             const isEditing = elements.some(el => 
-              el.type === 'original-text' && Math.abs(el.x - item.x) < 1 && Math.abs(el.y - item.y) < 1
+              el.type === 'original-text' && Math.abs(el.x - item.x) < 2 && Math.abs(el.y - item.y) < 2
             );
 
             return (
@@ -206,69 +255,128 @@ const PDFPage: React.FC<PDFPageProps> = ({
                   position: 'absolute',
                   left: item.x * zoom,
                   top: item.y * zoom,
-                  width: item.width * zoom,
-                  height: item.height * zoom,
-                  pointerEvents: tool === 'select' ? 'auto' : 'none',
+                  width: Math.max(item.width * zoom, 16),
+                  height: Math.max(item.height * zoom, item.fontSize * zoom),
+                  pointerEvents: tool === 'select' && !isEditing ? 'auto' : 'none',
                   cursor: tool === 'select' ? 'text' : 'default',
-                  backgroundColor: isEditing ? 'white' : 'transparent',
                 }}
                 className={cn(
-                  "transition-all duration-200 border border-transparent",
-                  tool === 'select' && !isEditing && "hover:bg-emerald-500/10 hover:border-emerald-500/20 rounded-sm",
-                  isEditing && "z-[5]"
+                  "transition-colors border border-transparent rounded-xs",
+                  tool === 'select' && !isEditing && "hover:bg-red-500/20 hover:border-red-500/50 hover:shadow-xs",
+                  isEditing && "opacity-0 pointer-events-none"
                 )}
+                title={tool === 'select' ? "Click to edit or remove this text" : undefined}
               />
             );
           })}
         </div>
 
-        {/* Overlay Elements */}
-        {elements.map((el) => (
-          <motion.div
-            key={el.id}
-            layoutId={el.id}
-            onClick={(e) => {
-              e.stopPropagation();
-              onSelect(el.id);
-            }}
-            style={{
-              position: 'absolute',
-              left: el.x * zoom,
-              top: el.y * zoom,
-              cursor: tool === 'select' ? 'move' : 'default',
-              border: selectedId === el.id ? '2px solid #10b981' : '1px dashed transparent',
-              padding: '4px',
-              minWidth: el.type === 'text' || el.type === 'original-text' ? '50px' : (el.width || 0) * zoom,
-              minHeight: el.type === 'text' || el.type === 'original-text' ? '20px' : (el.height || 0) * zoom,
-              backgroundColor: el.type === 'rect' ? el.color + '40' : (el.type === 'original-text' ? 'white' : 'transparent'),
-              zIndex: selectedId === el.id ? 10 : 6,
-            }}
-            className={cn(
-              "rounded-sm transition-shadow duration-200",
-              selectedId === el.id && "shadow-lg"
-            )}
-          >
-            {el.type === 'text' || el.type === 'original-text' ? (
-              <input
-                autoFocus={selectedId === el.id}
-                value={el.content}
-                onChange={(e) => onUpdateElement(el.id, { content: e.target.value })}
-                style={{
-                  fontSize: `${(el.fontSize || 16) * zoom}px`,
-                  color: el.color,
-                  backgroundColor: 'transparent',
-                  border: 'none',
-                  outline: 'none',
-                  width: '100%',
-                  fontFamily: 'inherit',
-                }}
-                className="placeholder:italic"
-              />
-            ) : (
-              <div style={{ width: el.width, height: el.height }} />
-            )}
-          </motion.div>
-        ))}
+        {/* Overlay / Edited Elements */}
+        {elements.map((el) => {
+          const isSelected = selectedId === el.id;
+          const isErased = el.type === 'original-text' && (!el.content || el.content.trim() === '');
+
+          return (
+            <div
+              key={el.id}
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelect(el.id);
+              }}
+              onMouseDown={(e) => {
+                if ((e.target as HTMLElement).tagName === 'INPUT') return;
+                if (tool !== 'select') return;
+                e.stopPropagation();
+                onSelect(el.id);
+                setDragging({
+                  id: el.id,
+                  startClientX: e.clientX,
+                  startClientY: e.clientY,
+                  initX: el.x,
+                  initY: el.y,
+                });
+              }}
+              style={{
+                position: 'absolute',
+                left: el.x * zoom,
+                top: el.y * zoom,
+                cursor: tool === 'select' ? 'move' : 'default',
+                zIndex: isSelected ? 30 : (el.type === 'original-text' ? 15 : 10),
+              }}
+              className={cn(
+                "transition-all select-none",
+                isSelected ? "ring-2 ring-red-600 rounded-xs shadow-md" : "hover:ring-1 hover:ring-red-400/60"
+              )}
+            >
+              {el.type === 'text' || el.type === 'original-text' ? (
+                <div 
+                  className={cn(
+                    "flex items-center px-1.5 py-0.5 rounded-xs transition-all",
+                    el.type === 'original-text' 
+                      ? (isErased 
+                          ? "bg-white border border-dashed border-red-400/80 shadow-xs" 
+                          : "bg-white border border-red-500/40 shadow-xs")
+                      : "bg-white/95 dark:bg-zinc-900/95 border border-zinc-300 dark:border-zinc-700 shadow-xs"
+                  )}
+                  style={{
+                    minWidth: Math.max((el.width || 40) * zoom, 40),
+                  }}
+                >
+                  <input
+                    autoFocus={isSelected}
+                    value={el.content || ''}
+                    placeholder={el.type === 'original-text' && isErased ? "[Text Erased / Removed]" : undefined}
+                    onChange={(e) => onUpdateElement(el.id, { content: e.target.value })}
+                    onFocus={() => onSelect(el.id)}
+                    style={{
+                      fontSize: `${Math.max((el.fontSize || 16) * zoom, 10)}px`,
+                      color: isErased ? '#9ca3af' : (el.color || '#000000'),
+                      fontStyle: isErased ? 'italic' : 'normal',
+                      textAlign: el.alignment || 'left',
+                      fontFamily: 'Helvetica, Arial, sans-serif',
+                      backgroundColor: 'transparent',
+                      border: 'none',
+                      outline: 'none',
+                      width: '100%',
+                      minWidth: `${Math.max(((el.content?.length || 1) + 2) * (el.fontSize || 16) * 0.55 * zoom, (el.width || 40) * zoom)}px`,
+                      padding: 0,
+                      margin: 0,
+                    }}
+                  />
+                  {isSelected && (
+                    <div 
+                      className="cursor-grab active:cursor-grabbing p-0.5 text-zinc-400 hover:text-red-600 ml-1 shrink-0"
+                      onMouseDown={(e) => {
+                        e.stopPropagation();
+                        setDragging({
+                          id: el.id,
+                          startClientX: e.clientX,
+                          startClientY: e.clientY,
+                          initX: el.x,
+                          initY: el.y,
+                        });
+                      }}
+                      title="Drag to reposition text"
+                    >
+                      <GripVertical className="w-3 h-3" />
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div
+                  style={{
+                    width: (el.width || 80) * zoom,
+                    height: (el.height || 40) * zoom,
+                    backgroundColor: el.color ? `${el.color}60` : 'rgba(239,68,68,0.3)',
+                    border: '1px solid',
+                    borderColor: el.color || '#ef4444',
+                  }}
+                  className="rounded-xs"
+                />
+              )}
+            </div>
+          );
+        })}
       </div>
     </motion.div>
   );
@@ -277,34 +385,136 @@ const PDFPage: React.FC<PDFPageProps> = ({
 export const PDFEditor: React.FC<{ file: File; onBack: () => void }> = ({ file, onBack }) => {
   const [pdfDoc, setPdfDoc] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
   const [elements, setElements] = useState<Record<number, EditorElement[]>>({});
-  const [originalTextItems, setOriginalTextItems] = useState<Record<number, any[]>>({});
+  const [originalTextItems, setOriginalTextItems] = useState<Record<number, DetectedTextItem[]>>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tool, setTool] = useState<'select' | 'text' | 'rect'>('select');
   const [zoom, setZoom] = useState(1.0);
-  const [loading, setLoading] = useState(true);
 
+  // Unified OCR Scan on file upload
+  const [isScanning, setIsScanning] = useState(true);
+  const [scanProgress, setScanProgress] = useState(0);
+  const [scanStatusText, setScanStatusText] = useState('Initializing OCR engine and PDF structure...');
+  const [detectedCount, setDetectedCount] = useState(0);
+  const [showScanCompleteBanner, setShowScanCompleteBanner] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+
+  // Combined OCR Scan Flow implemented right upon file upload
   useEffect(() => {
-    const loadPDF = async () => {
-      setLoading(true);
+    let cancelled = false;
+
+    const loadAndScanPDF = async () => {
+      setIsScanning(true);
+      setScanProgress(5);
+      setScanStatusText('Opening PDF and preparing document analysis...');
+      
       try {
         const data = await file.arrayBuffer();
+        if (cancelled) return;
+
         const loadingTask = pdfjsLib.getDocument({ data });
         const pdf = await loadingTask.promise;
+        if (cancelled) return;
         setPdfDoc(pdf);
-      } catch (error) {
-        console.error('Error loading PDF:', error);
-      } finally {
-        setLoading(false);
+
+        const totalPages = pdf.numPages;
+        const pageItemsMap: Record<number, DetectedTextItem[]> = {};
+        let totalCount = 0;
+
+        for (let p = 1; p <= totalPages; p++) {
+          if (cancelled) return;
+          const pct = Math.round(10 + ((p - 1) / totalPages) * 80);
+          setScanProgress(pct);
+          setScanStatusText(`Scanning Page ${p} of ${totalPages} for existing text...`);
+
+          const page = await pdf.getPage(p);
+          const viewport = page.getViewport({ scale: 1.0 });
+          const textContent = await page.getTextContent();
+          
+          let items: DetectedTextItem[] = textContent.items
+            .filter((item: any) => item.str && item.str.trim().length > 0)
+            .map((item: any) => {
+              const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
+              const fontSize = Math.hypot(item.transform[0], item.transform[1]);
+              return {
+                str: item.str,
+                x: tx[4],
+                y: tx[5] - fontSize,
+                width: item.width || (item.str.length * fontSize * 0.55),
+                height: fontSize * 1.15,
+                fontSize: fontSize,
+              };
+            });
+
+          // If the page contains no digital text (e.g. scanned document or photo PDF),
+          // automatically run Tesseract OCR on that page canvas
+          if (items.length === 0) {
+            setScanStatusText(`Scanned image detected on Page ${p}. Running OCR character recognition...`);
+            try {
+              const scale = 2.0;
+              const scanViewport = page.getViewport({ scale });
+              const canvas = document.createElement('canvas');
+              canvas.width = scanViewport.width;
+              canvas.height = scanViewport.height;
+              const ctx = canvas.getContext('2d');
+              if (ctx) {
+                await page.render({ canvasContext: ctx, viewport: scanViewport } as any).promise;
+                const ocrResult = await Tesseract.recognize(canvas, 'eng');
+                const lines = ((ocrResult.data as any)?.lines || []).filter((l: any) => l.text && l.text.trim().length > 0);
+                items = lines.map((l: any) => {
+                  const width = Math.max(20, (l.bbox.x1 - l.bbox.x0) / scale);
+                  const height = Math.max(12, (l.bbox.y1 - l.bbox.y0) / scale);
+                  const fontSize = Math.max(10, Math.min(36, Math.round(height * 0.75)));
+                  return {
+                    str: l.text.trim(),
+                    x: l.bbox.x0 / scale,
+                    y: l.bbox.y0 / scale,
+                    width,
+                    height,
+                    fontSize,
+                  };
+                });
+              }
+            } catch (ocrErr) {
+              console.warn('OCR processing error on page', p, ocrErr);
+            }
+          }
+
+          pageItemsMap[p] = items;
+          totalCount += items.length;
+        }
+
+        if (cancelled) return;
+        setOriginalTextItems(pageItemsMap);
+        setDetectedCount(totalCount);
+        setScanProgress(100);
+        setScanStatusText('OCR Scan complete! All text is now directly editable.');
+        
+        setTimeout(() => {
+          if (!cancelled) {
+            setIsScanning(false);
+            setShowScanCompleteBanner(true);
+            setTimeout(() => setShowScanCompleteBanner(false), 6000);
+          }
+        }, 400);
+
+      } catch (err) {
+        console.error('Error scanning PDF:', err);
+        setIsScanning(false);
       }
     };
-    loadPDF();
+
+    loadAndScanPDF();
+
+    return () => {
+      cancelled = true;
+    };
   }, [file]);
 
-  const handleOriginalTextClick = (pageNumber: number, item: any) => {
+  const handleOriginalTextClick = (pageNumber: number, item: DetectedTextItem) => {
     if (tool !== 'select') return;
 
     const existing = elements[pageNumber]?.find(el => 
-      el.type === 'original-text' && Math.abs(el.x - item.x) < 1 && Math.abs(el.y - item.y) < 1
+      el.type === 'original-text' && Math.abs(el.x - item.x) < 2 && Math.abs(el.y - item.y) < 2
     );
 
     if (existing) {
@@ -318,6 +528,7 @@ export const PDFEditor: React.FC<{ file: File; onBack: () => void }> = ({ file, 
       x: item.x,
       y: item.y,
       content: item.str,
+      originalText: item.str,
       fontSize: item.fontSize,
       color: '#000000',
       width: item.width,
@@ -349,8 +560,30 @@ export const PDFEditor: React.FC<{ file: File; onBack: () => void }> = ({ file, 
     }));
   };
 
+  const handleEraseText = (pageNumber: number, id: string) => {
+    handleUpdateElement(pageNumber, id, { content: '' });
+  };
+
+  const handleRestoreText = (pageNumber: number, id: string, originalText?: string) => {
+    handleUpdateElement(pageNumber, id, { content: originalText || '' });
+  };
+
   const handleDeleteElement = () => {
     if (!selectedId) return;
+    
+    // If it's an original-text element, deleting it acts as erasing it from the PDF (whiteout)
+    for (const pageStr in elements) {
+      const pageNum = parseInt(pageStr);
+      const el = elements[pageNum]?.find(e => e.id === selectedId);
+      if (el) {
+        if (el.type === 'original-text' && el.content && el.content.trim() !== '') {
+          handleUpdateElement(pageNum, el.id, { content: '' });
+          setSelectedId(null);
+          return;
+        }
+      }
+    }
+
     setElements(prev => {
       const next = { ...prev };
       for (const page in next) {
@@ -361,69 +594,157 @@ export const PDFEditor: React.FC<{ file: File; onBack: () => void }> = ({ file, 
     setSelectedId(null);
   };
 
+  const selectedElementInfo = React.useMemo(() => {
+    if (!selectedId) return null;
+    for (const page in elements) {
+      const el = elements[parseInt(page)]?.find(e => e.id === selectedId);
+      if (el) return { el, pageNum: parseInt(page) };
+    }
+    return null;
+  }, [selectedId, elements]);
+
+  // Keyboard shortcut: Delete or Escape
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!selectedId) return;
+      if (e.key === 'Escape') {
+        setSelectedId(null);
+      }
+      if (e.key === 'Delete' && (e.target as HTMLElement).tagName !== 'INPUT' && (e.target as HTMLElement).tagName !== 'TEXTAREA') {
+        handleDeleteElement();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedId, elements]);
+
   const handleSave = async () => {
-    const existingPdfBytes = await file.arrayBuffer();
-    const pdfLibDoc = await PDFDocument.load(existingPdfBytes, { ignoreEncryption: true });
-    const font = await pdfLibDoc.embedFont(StandardFonts.Helvetica);
+    try {
+      setIsExporting(true);
+      const existingPdfBytes = await file.arrayBuffer();
+      const pdfLibDoc = await PDFDocument.load(existingPdfBytes, { ignoreEncryption: true });
+      const font = await pdfLibDoc.embedFont(StandardFonts.Helvetica);
 
-    for (const pageNumStr in elements) {
-      const pageNum = parseInt(pageNumStr);
-      const pageElements = elements[pageNum];
-      const page = pdfLibDoc.getPage(pageNum - 1);
-      const { height } = page.getSize();
+      for (const pageNumStr in elements) {
+        const pageNum = parseInt(pageNumStr);
+        const pageElements = elements[pageNum];
+        const page = pdfLibDoc.getPage(pageNum - 1);
+        const { height } = page.getSize();
 
-      for (const el of pageElements) {
-        if (el.type === 'original-text') {
-          page.drawRectangle({
-            x: el.x,
-            y: height - el.y - (el.originalHeight || 0),
-            width: (el.originalWidth || 0) * 1.1,
-            height: (el.originalHeight || 0) * 1.2,
-            color: rgb(1, 1, 1),
-          });
-          page.drawText(el.content || '', {
-            x: el.x,
-            y: height - el.y - (el.fontSize || 16),
-            size: el.fontSize,
-            font: font,
-            color: hexToRgb(el.color || '#000000'),
-          });
-        } else if (el.type === 'text') {
-          page.drawText(el.content || '', {
-            x: el.x,
-            y: height - el.y - (el.fontSize || 16),
-            size: el.fontSize,
-            font: font,
-            color: hexToRgb(el.color || '#000000'),
-          });
-        } else if (el.type === 'rect') {
-          page.drawRectangle({
-            x: el.x,
-            y: height - el.y - (el.height || 0),
-            width: el.width,
-            height: el.height,
-            color: hexToRgb(el.color || '#000000'),
-            opacity: 0.5,
-          });
+        for (const el of pageElements) {
+          const textContent = (el.content || '').replace(/[^\x20-\x7E\xA0-\xFF]/g, ' ');
+
+          if (el.type === 'original-text') {
+            const boxHeight = (el.originalHeight || el.fontSize || 16);
+            const boxWidth = Math.max((el.originalWidth || 0) * 1.15, (el.width || 0) * 1.1, 20);
+
+            // Always draw solid white rectangle over original text location
+            // This cleanly removes / whits out the original letters or words from the PDF
+            page.drawRectangle({
+              x: Math.max(0, el.x - 2),
+              y: Math.max(0, height - el.y - boxHeight * 1.1),
+              width: boxWidth,
+              height: boxHeight * 1.25,
+              color: rgb(1, 1, 1),
+            });
+
+            // If the user modified, added, or kept any letters or words, draw them in place
+            if (textContent.trim().length > 0) {
+              page.drawText(textContent, {
+                x: el.x,
+                y: height - el.y - (el.fontSize || 16) * 0.85,
+                size: el.fontSize || 14,
+                font: font,
+                color: hexToRgb(el.color || '#000000'),
+              });
+            }
+          } else if (el.type === 'text') {
+            if (textContent.trim().length > 0) {
+              page.drawText(textContent, {
+                x: el.x,
+                y: height - el.y - (el.fontSize || 16) * 0.85,
+                size: el.fontSize || 14,
+                font: font,
+                color: hexToRgb(el.color || '#000000'),
+              });
+            }
+          } else if (el.type === 'rect') {
+            page.drawRectangle({
+              x: el.x,
+              y: height - el.y - (el.height || 0),
+              width: el.width || 80,
+              height: el.height || 40,
+              color: hexToRgb(el.color || '#ef4444'),
+              opacity: 0.5,
+            });
+          }
         }
       }
-    }
 
-    const pdfBytes = await pdfLibDoc.save({ useObjectStreams: false });
-    const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `edited_${file.name}`;
-    a.click();
-    URL.revokeObjectURL(url);
+      const pdfBytes = await pdfLibDoc.save({ useObjectStreams: false });
+      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `edited_${file.name}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Error exporting PDF:', err);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
-  if (loading) {
+  // 1 & 2: Scanning screen shown during automatic OCR scan implementation
+  if (isScanning) {
     return (
-      <div className="flex flex-col items-center justify-center h-[600px] gap-4">
-        <Loader2 className="w-12 h-12 text-emerald-500 animate-spin" />
-        <p className="text-zinc-500 font-medium">Preparing editor...</p>
+      <div className="flex flex-col items-center justify-center min-h-[550px] p-8 -m-8 bg-[#F8F9FA] dark:bg-zinc-950">
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="max-w-md w-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-8 rounded-3xl shadow-xl flex flex-col items-center text-center space-y-6"
+        >
+          <div className="relative">
+            <div className="w-16 h-16 rounded-2xl bg-red-600/10 dark:bg-red-600/20 text-red-600 flex items-center justify-center">
+              <ScanText className="w-8 h-8 animate-pulse" />
+            </div>
+            <span className="absolute -top-1 -right-1 flex h-4 w-4">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-4 w-4 bg-red-600"></span>
+            </span>
+          </div>
+
+          <div className="space-y-2">
+            <h3 className="text-xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">
+              Scanning Document with OCR
+            </h3>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
+              Detecting and converting all text in your PDF into directly editable fields...
+            </p>
+          </div>
+
+          <div className="w-full space-y-2">
+            <div className="flex justify-between text-xs font-mono font-bold text-zinc-600 dark:text-zinc-400">
+              <span className="truncate max-w-[240px] text-left">{scanStatusText}</span>
+              <span className="text-red-600 dark:text-red-400">{scanProgress}%</span>
+            </div>
+            <div className="w-full bg-zinc-100 dark:bg-zinc-800 rounded-full h-2.5 overflow-hidden">
+              <motion.div 
+                className="bg-red-600 h-2.5 rounded-full"
+                initial={{ width: '0%' }}
+                animate={{ width: `${scanProgress}%` }}
+                transition={{ duration: 0.2 }}
+              />
+            </div>
+          </div>
+
+          <div className="text-[11px] text-zinc-500 dark:text-zinc-400 bg-zinc-50 dark:bg-zinc-800/60 py-2.5 px-4 rounded-xl border border-zinc-100 dark:border-zinc-800 w-full text-left">
+            <span className="font-bold text-zinc-700 dark:text-zinc-300 block mb-0.5">Direct Text Editing:</span>
+            Once scanned, click any word or sentence to add, modify, or remove characters directly on the canvas.
+          </div>
+        </motion.div>
       </div>
     );
   }
@@ -434,161 +755,258 @@ export const PDFEditor: React.FC<{ file: File; onBack: () => void }> = ({ file, 
       <motion.div 
         initial={{ y: -100 }}
         animate={{ y: 0 }}
-        className="absolute top-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl border border-zinc-200 dark:border-zinc-800 px-4 py-2 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] ring-1 ring-black/5"
+        className="absolute top-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-xl border border-zinc-200 dark:border-zinc-800 px-4 py-2 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.06)] ring-1 ring-black/5"
       >
         <div className="flex items-center gap-2">
           <button 
             onClick={onBack} 
             className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl transition-all duration-200 active:scale-95"
+            title="Back to tools"
           >
             <ChevronLeft className="w-5 h-5 text-zinc-600 dark:text-zinc-400" />
           </button>
           <div className="h-6 w-px bg-zinc-200 dark:bg-zinc-800 mx-1" />
-          <div className="flex flex-col max-w-[120px]">
-            <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest truncate">PDF Craft</span>
+          <div className="flex flex-col max-w-[130px]">
+            <span className="text-[10px] font-bold text-red-600 dark:text-red-500 uppercase tracking-widest truncate">PDF Craft</span>
             <h1 className="text-xs font-bold truncate text-zinc-900 dark:text-zinc-100">{file.name}</h1>
           </div>
         </div>
 
-        <div className="h-8 w-px bg-zinc-200 dark:bg-zinc-800 mx-2" />
+        <div className="h-8 w-px bg-zinc-200 dark:bg-zinc-800 mx-1" />
 
-        <div className="flex items-center gap-1 bg-zinc-100/50 dark:bg-zinc-800/50 p-1 rounded-xl">
-          <ToolButton active={tool === 'select'} onClick={() => setTool('select')} icon={<MousePointer2 className="w-4 h-4" />} label="Select" />
-          <ToolButton active={tool === 'text'} onClick={() => setTool('text')} icon={<TextIcon className="w-4 h-4" />} label="Text" />
-          <ToolButton active={tool === 'rect'} onClick={() => setTool('rect')} icon={<Square className="w-4 h-4" />} label="Shape" />
+        {/* Core Editor Tools: Select (Click to edit any text), Add Text, Shape */}
+        <div className="flex items-center gap-1 bg-zinc-100/60 dark:bg-zinc-800/60 p-1 rounded-xl">
+          <ToolButton 
+            active={tool === 'select'} 
+            onClick={() => setTool('select')} 
+            icon={<MousePointer2 className="w-4 h-4" />} 
+            label="Select & Edit" 
+            badge={detectedCount > 0 ? `${detectedCount}` : undefined}
+          />
+          <ToolButton 
+            active={tool === 'text'} 
+            onClick={() => setTool('text')} 
+            icon={<Type className="w-4 h-4" />} 
+            label="Add Text" 
+          />
+          <ToolButton 
+            active={tool === 'rect'} 
+            onClick={() => setTool('rect')} 
+            icon={<Square className="w-4 h-4" />} 
+            label="Shape" 
+          />
         </div>
 
-        <div className="h-8 w-px bg-zinc-200 dark:bg-zinc-800 mx-2" />
+        <div className="h-8 w-px bg-zinc-200 dark:bg-zinc-800 mx-1" />
 
-        <div className="flex items-center gap-2 bg-zinc-100/50 dark:bg-zinc-800/50 px-2 py-1 rounded-xl">
+        {/* Zoom Controls */}
+        <div className="flex items-center gap-1 bg-zinc-100/60 dark:bg-zinc-800/60 px-2 py-1 rounded-xl">
           <button onClick={() => setZoom(z => Math.max(0.5, z - 0.1))} className="p-1.5 hover:bg-white dark:hover:bg-zinc-700 rounded-lg transition-all active:scale-90"><MinusIcon className="w-3.5 h-3.5" /></button>
           <span className="text-[11px] font-mono font-bold w-12 text-center text-zinc-600 dark:text-zinc-400">{Math.round(zoom * 100)}%</span>
           <button onClick={() => setZoom(z => Math.min(2, z + 0.1))} className="p-1.5 hover:bg-white dark:hover:bg-zinc-700 rounded-lg transition-all active:scale-90"><Plus className="w-3.5 h-3.5" /></button>
         </div>
 
-        <div className="h-8 w-px bg-zinc-200 dark:bg-zinc-800 mx-2" />
+        <div className="h-8 w-px bg-zinc-200 dark:bg-zinc-800 mx-1" />
 
+        {/* Export PDF Button */}
         <button
           onClick={handleSave}
-          className="flex items-center gap-2 bg-zinc-900 dark:bg-zinc-100 hover:bg-zinc-800 dark:hover:bg-white text-white dark:text-zinc-900 px-5 py-2 rounded-xl font-bold text-xs transition-all active:scale-95 shadow-lg shadow-black/10"
+          disabled={isExporting}
+          className="flex items-center gap-2 bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white px-5 py-2 rounded-xl font-bold text-xs transition-all active:scale-95 shadow-md shadow-red-600/20 cursor-pointer"
         >
-          <Download className="w-3.5 h-3.5" />
-          Export
+          {isExporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+          <span>{isExporting ? 'Saving...' : 'Export PDF'}</span>
         </button>
       </motion.div>
 
-      {/* Floating Properties Panel */}
+      {/* Post-Scan Ready Banner */}
       <AnimatePresence>
-        {selectedId && (
+        {showScanCompleteBanner && (
           <motion.div
-            initial={{ opacity: 0, x: 20, scale: 0.95 }}
-            animate={{ opacity: 1, x: 0, scale: 1 }}
-            exit={{ opacity: 0, x: 20, scale: 0.95 }}
-            className="absolute right-8 top-1/2 -translate-y-1/2 z-50 w-64 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-xl border border-zinc-200 dark:border-zinc-800 p-5 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.1)] ring-1 ring-black/5"
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="absolute top-20 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2.5 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 px-4 py-2 rounded-2xl shadow-xl text-xs font-semibold"
           >
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Properties</h3>
-              <button 
-                onClick={() => setSelectedId(null)}
-                className="p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"
-              >
-                <MinusIcon className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            <div className="space-y-6">
-              {(() => {
-                const allElements: EditorElement[] = (Object.values(elements) as EditorElement[][]).flat();
-                const el = allElements.find(e => e.id === selectedId);
-                if (!el) return null;
-
-                return (
-                  <>
-                    {(el.type === 'text' || el.type === 'original-text') && (
-                      <>
-                        <div className="space-y-3">
-                          <label className="text-[11px] font-bold text-zinc-500 uppercase flex items-center gap-2">
-                            <Type className="w-3 h-3" /> Font Size
-                          </label>
-                          <div className="flex items-center gap-3">
-                            <input
-                              type="range"
-                              min="8"
-                              max="72"
-                              value={el.fontSize}
-                              onChange={(e) => {
-                                const pageNum = Object.keys(elements).find(p => elements[parseInt(p)].some(e => e.id === selectedId));
-                                if (pageNum) handleUpdateElement(parseInt(pageNum), selectedId, { fontSize: parseInt(e.target.value) });
-                              }}
-                              className="flex-1 accent-zinc-900 dark:accent-zinc-100"
-                            />
-                            <span className="text-[11px] font-mono font-bold bg-zinc-100 dark:bg-zinc-800 px-2 py-1 rounded-lg">{el.fontSize}</span>
-                          </div>
-                        </div>
-
-                        <div className="space-y-3">
-                          <label className="text-[11px] font-bold text-zinc-500 uppercase flex items-center gap-2">
-                            <AlignLeft className="w-3 h-3" /> Alignment
-                          </label>
-                          <div className="flex gap-1 bg-zinc-100 dark:bg-zinc-800 p-1 rounded-xl">
-                            <button onClick={() => {
-                                const pageNum = Object.keys(elements).find(p => elements[parseInt(p)].some(e => e.id === selectedId));
-                                if (pageNum) handleUpdateElement(parseInt(pageNum), selectedId, { alignment: 'left' });
-                            }} className={cn("flex-1 p-2 rounded-lg transition-all", el.alignment === 'left' ? "bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-zinc-100" : "text-zinc-400")}><AlignLeft className="w-4 h-4 mx-auto" /></button>
-                            <button onClick={() => {
-                                const pageNum = Object.keys(elements).find(p => elements[parseInt(p)].some(e => e.id === selectedId));
-                                if (pageNum) handleUpdateElement(parseInt(pageNum), selectedId, { alignment: 'center' });
-                            }} className={cn("flex-1 p-2 rounded-lg transition-all", el.alignment === 'center' ? "bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-zinc-100" : "text-zinc-400")}><AlignCenter className="w-4 h-4 mx-auto" /></button>
-                            <button onClick={() => {
-                                const pageNum = Object.keys(elements).find(p => elements[parseInt(p)].some(e => e.id === selectedId));
-                                if (pageNum) handleUpdateElement(parseInt(pageNum), selectedId, { alignment: 'right' });
-                            }} className={cn("flex-1 p-2 rounded-lg transition-all", el.alignment === 'right' ? "bg-white dark:bg-zinc-700 shadow-sm text-zinc-900 dark:text-zinc-100" : "text-zinc-400")}><AlignRight className="w-4 h-4 mx-auto" /></button>
-                          </div>
-                        </div>
-                      </>
-                    )}
-
-                    <div className="space-y-3">
-                      <label className="text-[11px] font-bold text-zinc-500 uppercase flex items-center gap-2">
-                        <Palette className="w-3 h-3" /> Color
-                      </label>
-                      <div className="grid grid-cols-4 gap-2">
-                        {['#000000', '#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#ffffff'].map(c => (
-                          <button
-                            key={c}
-                            onClick={() => {
-                                const pageNum = Object.keys(elements).find(p => elements[parseInt(p)].some(e => e.id === selectedId));
-                                if (pageNum) handleUpdateElement(parseInt(pageNum), selectedId, { color: c });
-                            }}
-                            className={cn(
-                              "w-full aspect-square rounded-full border border-zinc-200 dark:border-zinc-700 transition-transform hover:scale-110 active:scale-90",
-                              el.color === c && "ring-2 ring-zinc-900 dark:ring-zinc-100 ring-offset-2 dark:ring-offset-zinc-900"
-                            )}
-                            style={{ backgroundColor: c }}
-                          />
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="pt-4 border-t border-zinc-100 dark:border-zinc-800">
-                      <button
-                        onClick={handleDeleteElement}
-                        className="w-full py-3 bg-rose-50 dark:bg-rose-900/10 text-rose-600 dark:text-rose-400 rounded-2xl font-bold text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-rose-100 dark:hover:bg-rose-900/20 transition-all active:scale-95 border border-rose-100 dark:border-rose-900/30"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        Delete Element
-                      </button>
-                    </div>
-                  </>
-                );
-              })()}
-            </div>
+            <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>
+              OCR scan complete! {detectedCount} text blocks detected. Click any text to add, edit, or remove words.
+            </span>
+            <button 
+              onClick={() => setShowScanCompleteBanner(false)}
+              className="p-1 hover:bg-white/20 dark:hover:bg-zinc-300 rounded-lg ml-2 cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Main Scrollable Area */}
-      <div className="flex-1 overflow-auto bg-[#F8F9FA] dark:bg-zinc-950 p-24 flex flex-col items-center scroll-smooth">
+      {/* Contextual Docked Toolbar for Selected Element */}
+      <AnimatePresence>
+        {selectedElementInfo && (
+          <motion.div
+            initial={{ opacity: 0, y: -10, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -10, scale: 0.95 }}
+            className="absolute top-20 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl border border-zinc-200 dark:border-zinc-800 px-3.5 py-1.5 rounded-2xl shadow-xl ring-1 ring-black/5"
+          >
+            {/* Status chip */}
+            <div className="flex items-center gap-1.5 pr-2.5 border-r border-zinc-200 dark:border-zinc-800 text-[11px] font-bold text-zinc-600 dark:text-zinc-300">
+              <span className="w-2 h-2 rounded-full bg-red-600 animate-pulse" />
+              <span>
+                {selectedElementInfo.el.type === 'original-text' 
+                  ? (!selectedElementInfo.el.content ? 'Text Erased' : 'Editing PDF Text') 
+                  : selectedElementInfo.el.type === 'text' ? 'New Text' : 'Shape'}
+              </span>
+            </div>
+
+            {/* Font size */}
+            {(selectedElementInfo.el.type === 'text' || selectedElementInfo.el.type === 'original-text') && (
+              <>
+                <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800 px-2 py-1 rounded-xl">
+                  <button
+                    onClick={() => {
+                      const newSize = Math.max(8, (selectedElementInfo.el.fontSize || 16) - 2);
+                      handleUpdateElement(selectedElementInfo.pageNum, selectedElementInfo.el.id, { fontSize: newSize });
+                    }}
+                    className="p-1 hover:bg-white dark:hover:bg-zinc-700 rounded-lg text-zinc-700 dark:text-zinc-300 transition-colors"
+                    title="Smaller text"
+                  >
+                    <MinusIcon className="w-3 h-3" />
+                  </button>
+                  <span className="text-[11px] font-mono font-bold w-10 text-center text-zinc-800 dark:text-zinc-200">
+                    {selectedElementInfo.el.fontSize || 16}pt
+                  </span>
+                  <button
+                    onClick={() => {
+                      const newSize = Math.min(72, (selectedElementInfo.el.fontSize || 16) + 2);
+                      handleUpdateElement(selectedElementInfo.pageNum, selectedElementInfo.el.id, { fontSize: newSize });
+                    }}
+                    className="p-1 hover:bg-white dark:hover:bg-zinc-700 rounded-lg text-zinc-700 dark:text-zinc-300 transition-colors"
+                    title="Larger text"
+                  >
+                    <Plus className="w-3 h-3" />
+                  </button>
+                </div>
+
+                {/* Alignment */}
+                <div className="flex items-center gap-0.5 bg-zinc-100 dark:bg-zinc-800 p-0.5 rounded-xl">
+                  <button
+                    onClick={() => handleUpdateElement(selectedElementInfo.pageNum, selectedElementInfo.el.id, { alignment: 'left' })}
+                    className={cn(
+                      "p-1.5 rounded-lg transition-all",
+                      (selectedElementInfo.el.alignment || 'left') === 'left' ? "bg-white dark:bg-zinc-700 shadow-xs text-red-600 dark:text-red-400 font-bold" : "text-zinc-400 hover:text-zinc-600"
+                    )}
+                    title="Align left"
+                  >
+                    <AlignLeft className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => handleUpdateElement(selectedElementInfo.pageNum, selectedElementInfo.el.id, { alignment: 'center' })}
+                    className={cn(
+                      "p-1.5 rounded-lg transition-all",
+                      selectedElementInfo.el.alignment === 'center' ? "bg-white dark:bg-zinc-700 shadow-xs text-red-600 dark:text-red-400 font-bold" : "text-zinc-400 hover:text-zinc-600"
+                    )}
+                    title="Align center"
+                  >
+                    <AlignCenter className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => handleUpdateElement(selectedElementInfo.pageNum, selectedElementInfo.el.id, { alignment: 'right' })}
+                    className={cn(
+                      "p-1.5 rounded-lg transition-all",
+                      selectedElementInfo.el.alignment === 'right' ? "bg-white dark:bg-zinc-700 shadow-xs text-red-600 dark:text-red-400 font-bold" : "text-zinc-400 hover:text-zinc-600"
+                    )}
+                    title="Align right"
+                  >
+                    <AlignRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* Color Palette */}
+            <div className="flex items-center gap-1.5 px-2 border-l border-r border-zinc-200 dark:border-zinc-800">
+              {['#000000', '#dc2626', '#2563eb', '#16a34a', '#d97706', '#ffffff'].map(c => (
+                <button
+                  key={c}
+                  onClick={() => handleUpdateElement(selectedElementInfo.pageNum, selectedElementInfo.el.id, { color: c })}
+                  className={cn(
+                    "w-5 h-5 rounded-full border border-zinc-300 dark:border-zinc-700 transition-transform hover:scale-110 active:scale-95",
+                    selectedElementInfo.el.color === c && "ring-2 ring-red-600 ring-offset-2 dark:ring-offset-zinc-900 scale-110"
+                  )}
+                  style={{ backgroundColor: c }}
+                  title={`Color: ${c}`}
+                />
+              ))}
+            </div>
+
+            {/* Erase / Remove or Restore Words */}
+            {selectedElementInfo.el.type === 'original-text' && (
+              selectedElementInfo.el.content ? (
+                <button
+                  onClick={() => handleEraseText(selectedElementInfo.pageNum, selectedElementInfo.el.id)}
+                  className="flex items-center gap-1 px-2.5 py-1 text-xs font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/40 rounded-xl transition-colors"
+                  title="Remove this word/sentence from the PDF"
+                >
+                  <Eraser className="w-3.5 h-3.5" />
+                  <span>Erase Words</span>
+                </button>
+              ) : (
+                <button
+                  onClick={() => handleRestoreText(selectedElementInfo.pageNum, selectedElementInfo.el.id, selectedElementInfo.el.originalText)}
+                  className="flex items-center gap-1 px-2.5 py-1 text-xs font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 rounded-xl transition-colors"
+                  title="Restore original text"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Restore</span>
+                </button>
+              )
+            )}
+
+            {/* Duplicate */}
+            <button
+              onClick={() => {
+                const { el, pageNum } = selectedElementInfo;
+                const newEl: EditorElement = {
+                  ...el,
+                  id: Math.random().toString(36).substr(2, 9),
+                  x: el.x + 15,
+                  y: el.y + 15,
+                };
+                handleAddElement(pageNum, newEl);
+              }}
+              className="p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
+              title="Duplicate element"
+            >
+              <Copy className="w-4 h-4" />
+            </button>
+
+            {/* Delete */}
+            <button
+              onClick={handleDeleteElement}
+              className="p-1.5 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-xl text-red-600 dark:text-red-400 transition-colors"
+              title="Delete or erase element"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+
+            {/* Done Button */}
+            <button
+              onClick={() => setSelectedId(null)}
+              className="flex items-center gap-1 px-3 py-1 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 rounded-xl text-xs font-bold hover:bg-zinc-800 dark:hover:bg-white transition-colors ml-1 cursor-pointer"
+              title="Done editing"
+            >
+              <Check className="w-3.5 h-3.5" />
+              <span>Done</span>
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Main Continuous Vertical Scrollable Canvas */}
+      <div className="flex-1 overflow-auto bg-[#F8F9FA] dark:bg-zinc-950 pt-28 pb-32 px-6 flex flex-col items-center scroll-smooth">
         <div className="max-w-5xl w-full flex flex-col items-center">
           {pdfDoc && Array.from({ length: pdfDoc.numPages }).map((_, i) => (
             <PDFPage
@@ -604,7 +1022,6 @@ export const PDFEditor: React.FC<{ file: File; onBack: () => void }> = ({ file, 
               onAddElement={(el) => handleAddElement(i + 1, el)}
               onOriginalTextClick={(item) => handleOriginalTextClick(i + 1, item)}
               originalTextItems={originalTextItems[i + 1] || []}
-              setOriginalTextItems={(items) => setOriginalTextItems(prev => ({ ...prev, [i + 1]: items }))}
             />
           ))}
         </div>
@@ -613,11 +1030,23 @@ export const PDFEditor: React.FC<{ file: File; onBack: () => void }> = ({ file, 
   );
 };
 
-const ToolButton = ({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) => (
+const ToolButton = ({ 
+  active, 
+  onClick, 
+  icon, 
+  label, 
+  badge 
+}: { 
+  active: boolean; 
+  onClick: () => void; 
+  icon: React.ReactNode; 
+  label: string; 
+  badge?: string; 
+}) => (
   <button
     onClick={onClick}
     className={cn(
-      "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all duration-200 active:scale-95",
+      "flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all duration-200 active:scale-95 cursor-pointer",
       active 
         ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm ring-1 ring-black/5" 
         : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-white/50 dark:hover:bg-zinc-800/50"
@@ -625,11 +1054,10 @@ const ToolButton = ({ active, onClick, icon, label }: { active: boolean; onClick
   >
     {icon}
     <span className="hidden sm:inline">{label}</span>
+    {badge && (
+      <span className="text-[10px] font-mono px-1.5 py-0.2 bg-red-100 dark:bg-red-950/60 text-red-600 dark:text-red-400 rounded-full font-bold">
+        {badge}
+      </span>
+    )}
   </button>
-);
-
-const FileText = ({ className }: { className?: string }) => (
-  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-  </svg>
 );

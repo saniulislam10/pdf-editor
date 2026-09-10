@@ -86,7 +86,7 @@ export const PDFPreview: React.FC<PDFPreviewProps> = ({
   if (loading) {
     return (
       <div className="flex items-center justify-center p-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-500"></div>
       </div>
     );
   }
@@ -101,7 +101,7 @@ export const PDFPreview: React.FC<PDFPreviewProps> = ({
               onClick={() => onThumbnailClick?.(index)}
               className={`relative cursor-pointer group rounded-lg overflow-hidden border-2 transition-all ${
                 selectedPages.includes(index)
-                  ? 'border-emerald-500 ring-2 ring-emerald-500/20'
+                  ? 'border-red-500 ring-2 ring-red-500/20'
                   : 'border-transparent hover:border-zinc-300 dark:hover:border-zinc-700'
               }`}
             >
@@ -110,8 +110,8 @@ export const PDFPreview: React.FC<PDFPreviewProps> = ({
                 {index + 1}
               </div>
               {selectedPages.includes(index) && (
-                <div className="absolute inset-0 bg-emerald-500/10 flex items-center justify-center">
-                  <div className="bg-emerald-500 text-white rounded-full p-1 shadow-lg">
+                <div className="absolute inset-0 bg-red-500/10 flex items-center justify-center">
+                  <div className="bg-red-600 text-white rounded-full p-1 shadow-lg">
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                     </svg>

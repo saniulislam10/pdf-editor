@@ -37,28 +37,42 @@ type ToolType = 'home' | 'compress' | 'merge' | 'split' | 'remove' | 'edit' | 'r
 
 export default function App() {
   const [activeTool, setActiveTool] = useState<ToolType>('home');
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  // Default strictly to light theme; allow persistence if user deliberately changed
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('pdfcraft_theme');
+      if (saved === 'dark') return true;
+      if (saved === 'light') return false;
+    }
+    return false;
+  });
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [editorFile, setEditorFile] = useState<File | null>(null);
 
   useEffect(() => {
     if (isDarkMode) {
       document.documentElement.classList.add('dark');
+      try {
+        localStorage.setItem('pdfcraft_theme', 'dark');
+      } catch {}
     } else {
       document.documentElement.classList.remove('dark');
+      try {
+        localStorage.setItem('pdfcraft_theme', 'light');
+      } catch {}
     }
   }, [isDarkMode]);
 
   const tools = [
-    { id: 'compress', name: 'Compress PDF', icon: <Zap className="w-6 h-6" />, description: 'Reduce file size while keeping quality.', color: 'bg-emerald-500' },
-    { id: 'merge', name: 'Merge PDF', icon: <Layers className="w-6 h-6" />, description: 'Combine multiple PDFs into one.', color: 'bg-indigo-500' },
-    { id: 'split', name: 'Split PDF', icon: <Scissors className="w-6 h-6" />, description: 'Extract pages or split into multiple files.', color: 'bg-rose-500' },
-    { id: 'remove', name: 'Remove Pages', icon: <Trash2 className="w-6 h-6" />, description: 'Delete unwanted pages from your PDF.', color: 'bg-orange-500' },
-    { id: 'edit', name: 'Edit PDF', icon: <Type className="w-6 h-6" />, description: 'Add text, shapes, and annotations.', color: 'bg-blue-500' },
-    { id: 'rotate', name: 'Rotate PDF', icon: <RotateCw className="w-6 h-6" />, description: 'Rotate pages to the correct orientation.', color: 'bg-amber-500' },
-    { id: 'convert', name: 'JPG to PDF', icon: <FileImage className="w-6 h-6" />, description: 'Convert images to a single PDF.', color: 'bg-cyan-500' },
-    { id: 'watermark', name: 'Watermark', icon: <Stamp className="w-6 h-6" />, description: 'Add text watermarks to your PDF.', color: 'bg-violet-500' },
-    { id: 'security', name: 'Security', icon: <Lock className="w-6 h-6" />, description: 'Protect or unlock your PDF files.', color: 'bg-zinc-700' },
+    { id: 'compress', name: 'Compress PDF', icon: <Zap className="w-6 h-6" />, description: 'Reduce file size while keeping high quality.', color: 'bg-red-600' },
+    { id: 'merge', name: 'Merge PDF', icon: <Layers className="w-6 h-6" />, description: 'Combine multiple PDFs into one document.', color: 'bg-red-600' },
+    { id: 'split', name: 'Split PDF', icon: <Scissors className="w-6 h-6" />, description: 'Extract pages or split into multiple files.', color: 'bg-red-600' },
+    { id: 'remove', name: 'Remove Pages', icon: <Trash2 className="w-6 h-6" />, description: 'Delete unwanted pages from your PDF.', color: 'bg-red-600' },
+    { id: 'edit', name: 'Edit PDF', icon: <Type className="w-6 h-6" />, description: 'Directly edit existing text, add or remove words, and modify pages.', color: 'bg-red-600' },
+    { id: 'rotate', name: 'Rotate PDF', icon: <RotateCw className="w-6 h-6" />, description: 'Rotate pages to the correct orientation.', color: 'bg-red-600' },
+    { id: 'convert', name: 'JPG to PDF', icon: <FileImage className="w-6 h-6" />, description: 'Convert images to a single PDF document.', color: 'bg-red-600' },
+    { id: 'watermark', name: 'Watermark', icon: <Stamp className="w-6 h-6" />, description: 'Add text watermarks to your PDF pages.', color: 'bg-red-600' },
+    { id: 'security', name: 'Security', icon: <Lock className="w-6 h-6" />, description: 'Protect with password or unlock your PDF.', color: 'bg-red-600' },
   ];
 
   const renderTool = () => {
@@ -77,8 +91,8 @@ export default function App() {
         ) : (
           <div className="max-w-4xl mx-auto space-y-8">
             <div className="text-center space-y-2">
-              <h2 className="text-3xl font-bold tracking-tight">PDF Editor</h2>
-              <p className="text-zinc-500">Upload a PDF to start editing text and adding annotations.</p>
+              <h2 className="text-3xl font-bold tracking-tight">Edit PDF</h2>
+              <p className="text-zinc-500">Upload a PDF to automatically scan with OCR and directly edit or add text.</p>
             </div>
             <FileUpload onFilesSelected={(files) => setEditorFile(files[0])} multiple={false} />
           </div>
@@ -94,33 +108,47 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
             <div className="flex items-center gap-2 cursor-pointer" onClick={() => setActiveTool('home')}>
-              <div className="bg-emerald-600 p-1.5 rounded-lg shadow-lg shadow-emerald-600/20">
+              <div className="bg-red-600 p-1.5 rounded-lg shadow-lg shadow-red-600/20">
                 <FileText className="w-6 h-6 text-white" />
               </div>
-              <span className="text-xl font-black tracking-tighter">PDFCRAFT</span>
+              <span className="text-xl font-black tracking-tighter uppercase">PDF Craft</span>
             </div>
 
             <div className="hidden md:flex items-center gap-6">
-              {tools.slice(0, 4).map((tool) => (
+              {[
+                { id: 'merge', name: 'MERGE PDF' },
+                { id: 'split', name: 'SPLIT PDF' },
+                { id: 'compress', name: 'COMPRESS PDF' },
+                { id: 'edit', name: 'EDIT PDF' },
+                { id: 'home', name: 'ALL PDF TOOLS' }
+              ].map((item) => (
                 <button
-                  key={tool.id}
-                  onClick={() => setActiveTool(tool.id as ToolType)}
+                  key={item.id}
+                  onClick={() => {
+                    setActiveTool(item.id as ToolType);
+                    if (item.id !== 'edit') setEditorFile(null);
+                  }}
                   className={cn(
-                    "text-sm font-bold transition-colors",
-                    activeTool === tool.id ? "text-emerald-600 dark:text-emerald-400" : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+                    "text-xs font-black tracking-wider uppercase transition-colors py-1",
+                    activeTool === item.id 
+                      ? "text-red-600 dark:text-red-400 border-b-2 border-red-600 dark:border-red-400" 
+                      : "text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
                   )}
                 >
-                  {tool.name}
+                  {item.name}
                 </button>
               ))}
             </div>
 
             <div className="flex items-center gap-3">
               <button
+                id="theme-toggle-btn"
                 onClick={() => setIsDarkMode(!isDarkMode)}
-                className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors"
+                title={isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
+                aria-label={isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
+                className="p-2.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors text-zinc-600 dark:text-zinc-400 hover:text-red-600 dark:hover:text-red-400"
               >
-                {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+                {isDarkMode ? <Sun className="w-5 h-5 text-amber-400" /> : <Moon className="w-5 h-5" />}
               </button>
               <button className="hidden sm:flex items-center gap-2 px-4 py-2 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 rounded-xl font-bold text-sm transition-all hover:opacity-90">
                 Sign In
@@ -175,9 +203,9 @@ export default function App() {
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 rounded-full text-xs font-bold uppercase tracking-wider"
+                className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-400 rounded-full text-xs font-bold uppercase tracking-wider"
               >
-                <Zap className="w-3 h-3" />
+                <Zap className="w-3.5 h-3.5" />
                 Fast & Secure PDF Processing
               </motion.div>
               <motion.h1
@@ -186,7 +214,7 @@ export default function App() {
                 transition={{ delay: 0.1 }}
                 className="text-5xl sm:text-7xl font-black tracking-tight leading-[0.9]"
               >
-                Every PDF tool you'll <span className="text-emerald-600">ever need.</span>
+                Every PDF tool you'll <span className="text-red-600 dark:text-red-500">ever need.</span>
               </motion.h1>
               <motion.p
                 initial={{ opacity: 0, y: 20 }}
@@ -208,17 +236,17 @@ export default function App() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.1 * index }}
                   onClick={() => setActiveTool(tool.id as ToolType)}
-                  className="group relative bg-white dark:bg-zinc-900 p-8 rounded-[2rem] border border-zinc-200 dark:border-zinc-800 shadow-sm hover:shadow-2xl hover:shadow-emerald-500/10 transition-all cursor-pointer overflow-hidden"
+                  className="group relative bg-white dark:bg-zinc-900 p-8 rounded-[2rem] border border-zinc-200 dark:border-zinc-800 shadow-sm hover:shadow-2xl hover:shadow-red-500/10 transition-all cursor-pointer overflow-hidden"
                 >
                   <div className={cn(
-                    "w-14 h-14 rounded-2xl flex items-center justify-center text-white mb-6 transition-transform group-hover:scale-110 group-hover:rotate-3",
+                    "w-14 h-14 rounded-2xl flex items-center justify-center text-white mb-6 transition-transform group-hover:scale-110 group-hover:rotate-3 shadow-lg shadow-red-600/20",
                     tool.color
                   )}>
                     {tool.icon}
                   </div>
                   <h3 className="text-xl font-bold mb-2 flex items-center gap-2">
                     {tool.name}
-                    <ChevronRight className="w-4 h-4 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all" />
+                    <ChevronRight className="w-4 h-4 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all text-red-600" />
                   </h3>
                   <p className="text-zinc-500 dark:text-zinc-400 text-sm leading-relaxed">
                     {tool.description}
@@ -234,7 +262,7 @@ export default function App() {
             </div>
 
             {/* Features Section */}
-            <div className="bg-zinc-900 dark:bg-emerald-900/10 rounded-[3rem] p-12 text-white overflow-hidden relative">
+            <div className="bg-zinc-900 dark:bg-zinc-900/90 rounded-[3rem] p-12 text-white overflow-hidden relative border border-zinc-800">
               <div className="relative z-10 grid md:grid-cols-2 gap-12 items-center">
                 <div className="space-y-6">
                   <h2 className="text-4xl font-bold leading-tight">Secure, Private, and <br />Blazing Fast.</h2>
@@ -245,21 +273,21 @@ export default function App() {
                   </p>
                   <div className="flex flex-wrap gap-4">
                     <div className="flex items-center gap-2 bg-white/10 px-4 py-2 rounded-full text-sm">
-                      <Lock className="w-4 h-4 text-emerald-400" />
+                      <Lock className="w-4 h-4 text-red-400" />
                       100% Private
                     </div>
                     <div className="flex items-center gap-2 bg-white/10 px-4 py-2 rounded-full text-sm">
-                      <Zap className="w-4 h-4 text-emerald-400" />
+                      <Zap className="w-4 h-4 text-red-400" />
                       Instant Processing
                     </div>
                     <div className="flex items-center gap-2 bg-white/10 px-4 py-2 rounded-full text-sm">
-                      <Unlock className="w-4 h-4 text-emerald-400" />
+                      <Unlock className="w-4 h-4 text-red-400" />
                       No Account Needed
                     </div>
                   </div>
                 </div>
                 <div className="relative">
-                  <div className="bg-emerald-500/20 w-full aspect-square rounded-full blur-3xl absolute -top-12 -right-12" />
+                  <div className="bg-red-600/20 w-full aspect-square rounded-full blur-3xl absolute -top-12 -right-12" />
                   <div className="bg-white/5 backdrop-blur-sm border border-white/10 p-8 rounded-3xl relative">
                     <div className="space-y-4">
                       <div className="h-4 w-3/4 bg-white/10 rounded-full animate-pulse" />
@@ -301,8 +329,8 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row justify-between items-center gap-8">
             <div className="flex items-center gap-2">
-              <FileText className="w-6 h-6 text-emerald-600" />
-              <span className="text-xl font-black tracking-tighter">PDFCRAFT</span>
+              <FileText className="w-6 h-6 text-red-600" />
+              <span className="text-xl font-black tracking-tighter uppercase">PDF Craft</span>
             </div>
             <div className="flex gap-8 text-sm font-medium text-zinc-500">
               <a href="#" className="hover:text-zinc-900 dark:hover:text-zinc-100">Terms</a>

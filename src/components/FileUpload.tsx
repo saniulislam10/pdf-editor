@@ -45,13 +45,13 @@ export const FileUpload: React.FC<FileUploadProps> = ({
         {...getRootProps()}
         className={cn(
           "border-2 border-dashed rounded-2xl p-12 transition-all cursor-pointer flex flex-col items-center justify-center text-center",
-          isDragActive ? "border-emerald-500 bg-emerald-50/50" : "border-zinc-200 hover:border-zinc-300 dark:border-zinc-800 dark:hover:border-zinc-700",
+          isDragActive ? "border-red-500 bg-red-50/50 dark:bg-red-950/20" : "border-zinc-200 hover:border-red-300 dark:border-zinc-800 dark:hover:border-zinc-700",
           files.length > 0 ? "py-8" : "py-16"
         )}
       >
         <input {...getInputProps()} />
-        <div className="bg-emerald-100 dark:bg-emerald-900/30 p-4 rounded-full mb-4">
-          <Upload className="w-8 h-8 text-emerald-600 dark:text-emerald-400" />
+        <div className="bg-red-100 dark:bg-red-900/30 p-4 rounded-full mb-4">
+          <Upload className="w-8 h-8 text-red-600 dark:text-red-400" />
         </div>
         <h3 className="text-xl font-semibold mb-2">
           {isDragActive ? "Drop files here" : "Drag & drop PDF files"}

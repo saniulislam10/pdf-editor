@@ -1,5 +1,6 @@
 {
   "name": "PDF Craft",
   "description": "A powerful, fast, and secure all-in-one PDF toolkit for compression, merging, splitting, editing, and more.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -83,7 +83,7 @@ export const ConvertTool: React.FC = () => {
             <button
               onClick={handleJpgToPdf}
               disabled={processing}
-              className="w-full py-4 bg-blue-600 hover:bg-blue-700 disabled:bg-zinc-400 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-600/20"
+              className="w-full py-4 bg-red-600 hover:bg-red-700 disabled:bg-zinc-400 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-red-600/20"
             >
               {processing ? (
                 <>
@@ -101,8 +101,8 @@ export const ConvertTool: React.FC = () => {
         </div>
       ) : (
         <div className="bg-white dark:bg-zinc-900 p-8 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-xl text-center space-y-6">
-          <div className="inline-flex p-4 bg-emerald-100 dark:bg-emerald-900/30 rounded-full">
-            <Check className="w-12 h-12 text-emerald-600 dark:text-emerald-400" />
+          <div className="inline-flex p-4 bg-red-100 dark:bg-red-900/30 rounded-full">
+            <Check className="w-12 h-12 text-red-600 dark:text-red-400" />
           </div>
           <div>
             <h3 className="text-2xl font-bold mb-2">Conversion Complete!</h3>
@@ -111,7 +111,7 @@ export const ConvertTool: React.FC = () => {
 
           <button
             onClick={download}
-            className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-600/20"
+            className="w-full py-4 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-red-600/20"
           >
             <Download className="w-5 h-5" />
             Download PDF

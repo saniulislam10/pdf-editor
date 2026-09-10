@@ -83,7 +83,7 @@ export const SplitTool: React.FC = () => {
                       placeholder="e.g. 1-5, 8, 11-13"
                       value={range}
                       onChange={(e) => setRange(e.target.value)}
-                      className="w-full p-3 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-rose-500 outline-none"
+                      className="w-full p-3 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl focus:ring-2 focus:ring-red-500 outline-none"
                     />
                     <p className="text-[10px] text-zinc-500 mt-2">
                       Enter page numbers separated by commas, or ranges with hyphens.
@@ -93,7 +93,7 @@ export const SplitTool: React.FC = () => {
                   <div className="pt-2">
                     <button
                       onClick={() => setShowOptions(!showOptions)}
-                      className="flex items-center gap-2 text-sm font-bold text-zinc-500 hover:text-rose-600 transition-colors"
+                      className="flex items-center gap-2 text-sm font-bold text-zinc-500 hover:text-red-600 transition-colors"
                     >
                       <Settings2 className="w-4 h-4" />
                       Page Numbering Options
@@ -110,7 +110,7 @@ export const SplitTool: React.FC = () => {
                             type="checkbox"
                             checked={numbering.enabled}
                             onChange={(e) => setNumbering({ ...numbering, enabled: e.target.checked })}
-                            className="w-5 h-5 accent-rose-600"
+                            className="w-5 h-5 accent-red-600"
                           />
                         </div>
 
@@ -154,7 +154,7 @@ export const SplitTool: React.FC = () => {
                   <button
                     onClick={handleSplit}
                     disabled={processing || !range}
-                    className="w-full py-4 bg-rose-600 hover:bg-rose-700 disabled:bg-zinc-400 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-rose-600/20"
+                    className="w-full py-4 bg-red-600 hover:bg-red-700 disabled:bg-zinc-400 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-red-600/20"
                   >
                     {processing ? (
                       <Loader2 className="w-5 h-5 animate-spin" />
@@ -170,8 +170,8 @@ export const SplitTool: React.FC = () => {
         </div>
       ) : (
         <div className="bg-white dark:bg-zinc-900 p-8 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-xl text-center space-y-6">
-          <div className="inline-flex p-4 bg-rose-100 dark:bg-rose-900/30 rounded-full">
-            <Scissors className="w-12 h-12 text-rose-600 dark:text-rose-400" />
+          <div className="inline-flex p-4 bg-red-100 dark:bg-red-900/30 rounded-full">
+            <Scissors className="w-12 h-12 text-red-600 dark:text-red-400" />
           </div>
           <div>
             <h3 className="text-2xl font-bold mb-2">PDF Split Successfully!</h3>
@@ -181,7 +181,7 @@ export const SplitTool: React.FC = () => {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 max-w-2xl mx-auto">
             {results.map((_, i) => (
               <div key={i} className="p-4 bg-zinc-50 dark:bg-zinc-800 rounded-xl border border-zinc-100 dark:border-zinc-700">
-                <FileText className="w-8 h-8 mx-auto mb-2 text-rose-500" />
+                <FileText className="w-8 h-8 mx-auto mb-2 text-red-500" />
                 <p className="text-xs font-bold">Part {i + 1}</p>
               </div>
             ))}
@@ -190,7 +190,7 @@ export const SplitTool: React.FC = () => {
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <button
               onClick={downloadAll}
-              className="px-8 py-4 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-rose-600/20"
+              className="px-8 py-4 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-red-600/20"
             >
               <Download className="w-5 h-5" />
               Download All Parts

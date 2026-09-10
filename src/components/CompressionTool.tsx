@@ -77,7 +77,7 @@ export const CompressionTool: React.FC = () => {
                       onClick={() => setLevel(l)}
                       className={`p-4 rounded-xl border-2 transition-all text-center ${
                         level === l
-                          ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400'
+                          ? 'border-red-500 bg-red-50/50 dark:bg-red-900/20 text-red-700 dark:text-red-400'
                           : 'border-zinc-100 dark:border-zinc-800 hover:border-zinc-200 dark:hover:border-zinc-700'
                       }`}
                     >
@@ -104,7 +104,7 @@ export const CompressionTool: React.FC = () => {
               <button
                 onClick={handleCompress}
                 disabled={processing}
-                className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 disabled:bg-zinc-400 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-600/20"
+                className="w-full py-4 bg-red-600 hover:bg-red-700 disabled:bg-zinc-400 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-red-600/20"
               >
                 {processing ? (
                   <>
@@ -123,8 +123,8 @@ export const CompressionTool: React.FC = () => {
         </div>
       ) : (
         <div className="bg-white dark:bg-zinc-900 p-8 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-xl text-center space-y-6">
-          <div className="inline-flex p-4 bg-emerald-100 dark:bg-emerald-900/30 rounded-full">
-            <CheckCircle2 className="w-12 h-12 text-emerald-600 dark:text-emerald-400" />
+          <div className="inline-flex p-4 bg-red-100 dark:bg-red-900/30 rounded-full">
+            <CheckCircle2 className="w-12 h-12 text-red-600 dark:text-red-400" />
           </div>
           <div>
             <h3 className="text-2xl font-bold mb-2">Compression Complete!</h3>
@@ -138,11 +138,11 @@ export const CompressionTool: React.FC = () => {
             </div>
             <div>
               <p className="text-xs text-zinc-500 uppercase font-bold mb-1">Compressed</p>
-              <p className="text-lg font-mono text-emerald-600 dark:text-emerald-400">{formatBytes(result.compressed)}</p>
+              <p className="text-lg font-mono text-red-600 dark:text-red-400">{formatBytes(result.compressed)}</p>
             </div>
             <div>
               <p className="text-xs text-zinc-500 uppercase font-bold mb-1">Reduction</p>
-              <p className="text-lg font-mono text-emerald-600 dark:text-emerald-400">{reduction > 0 ? `-${reduction}%` : '0%'}</p>
+              <p className="text-lg font-mono text-red-600 dark:text-red-400">{reduction > 0 ? `-${reduction}%` : '0%'}</p>
             </div>
           </div>
 
@@ -156,7 +156,7 @@ export const CompressionTool: React.FC = () => {
           <div className="flex flex-col sm:flex-row gap-3">
             <button
               onClick={download}
-              className="flex-1 py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-600/20"
+              className="flex-1 py-4 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-red-600/20"
             >
               <Download className="w-5 h-5" />
               Download PDF

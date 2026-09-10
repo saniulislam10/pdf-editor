@@ -78,7 +78,7 @@ export const WatermarkTool: React.FC = () => {
                     type="text"
                     value={text}
                     onChange={(e) => setText(e.target.value)}
-                    className="w-full p-3 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="w-full p-3 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl outline-none focus:ring-2 focus:ring-red-500"
                   />
                 </div>
                 <div className="space-y-2">
@@ -90,7 +90,7 @@ export const WatermarkTool: React.FC = () => {
                     step="0.1"
                     value={opacity}
                     onChange={(e) => setOpacity(parseFloat(e.target.value))}
-                    className="w-full h-10"
+                    className="w-full h-10 accent-red-600"
                   />
                 </div>
               </div>
@@ -98,7 +98,7 @@ export const WatermarkTool: React.FC = () => {
               <button
                 onClick={handleWatermark}
                 disabled={processing || !text}
-                className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 disabled:bg-zinc-400 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg"
+                className="w-full py-4 bg-red-600 hover:bg-red-700 disabled:bg-zinc-400 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-red-600/20"
               >
                 {processing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Stamp className="w-5 h-5" />}
                 Add Watermark
@@ -108,8 +108,8 @@ export const WatermarkTool: React.FC = () => {
         </div>
       ) : (
         <div className="bg-white dark:bg-zinc-900 p-8 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-xl text-center space-y-6">
-          <div className="inline-flex p-4 bg-emerald-100 dark:bg-emerald-900/30 rounded-full">
-            <Check className="w-12 h-12 text-emerald-600 dark:text-emerald-400" />
+          <div className="inline-flex p-4 bg-red-100 dark:bg-red-900/30 rounded-full">
+            <Check className="w-12 h-12 text-red-600 dark:text-red-400" />
           </div>
           <div>
             <h3 className="text-2xl font-bold mb-2">Watermark Added!</h3>
@@ -118,7 +118,7 @@ export const WatermarkTool: React.FC = () => {
 
           <button
             onClick={download}
-            className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-600/20"
+            className="w-full py-4 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-red-600/20"
           >
             <Download className="w-5 h-5" />
             Download PDF
