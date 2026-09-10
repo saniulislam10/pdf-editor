@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Zap, 
   Layers, 
@@ -17,10 +17,13 @@ import {
   X,
   Github,
   ChevronRight,
+  ChevronDown,
   ArrowLeft,
-  Stamp
+  Stamp,
+  User as UserIcon,
+  LogOut
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './utils/utils';
 import { CompressionTool } from './components/CompressionTool';
 import { MergeTool } from './components/MergeTool';
@@ -32,8 +35,12 @@ import { SecurityTool } from './components/SecurityTool';
 import { WatermarkTool } from './components/WatermarkTool';
 import { PDFEditor } from './components/PDFEditor';
 import { FileUpload } from './components/FileUpload';
+import { AuthModal } from './components/AuthModal';
+import { ResetPasswordModal } from './components/ResetPasswordModal';
+import { UserProfile } from './components/UserProfile';
+import { useAuth } from './context/AuthContext';
 
-type ToolType = 'home' | 'compress' | 'merge' | 'split' | 'remove' | 'edit' | 'rotate' | 'convert' | 'security' | 'watermark';
+type ToolType = 'home' | 'compress' | 'merge' | 'split' | 'remove' | 'edit' | 'rotate' | 'convert' | 'security' | 'watermark' | 'account';
 
 export default function App() {
   const [activeTool, setActiveTool] = useState<ToolType>('home');
@@ -48,6 +55,19 @@ export default function App() {
   });
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [editorFile, setEditorFile] = useState<File | null>(null);
+  const { user, logout, openAuthModal } = useAuth();
+  const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsUserDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   useEffect(() => {
     if (isDarkMode) {
@@ -97,6 +117,8 @@ export default function App() {
             <FileUpload onFilesSelected={(files) => setEditorFile(files[0])} multiple={false} />
           </div>
         );
+      case 'account':
+        return <UserProfile onBack={() => setActiveTool('home')} />;
       default: return null;
     }
   };
@@ -150,9 +172,93 @@ export default function App() {
               >
                 {isDarkMode ? <Sun className="w-5 h-5 text-amber-400" /> : <Moon className="w-5 h-5" />}
               </button>
-              <button className="hidden sm:flex items-center gap-2 px-4 py-2 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 rounded-xl font-bold text-sm transition-all hover:opacity-90">
-                Sign In
-              </button>
+              {user ? (
+                <div className="relative" ref={dropdownRef}>
+                  <button
+                    id="user-menu-btn"
+                    onClick={() => setIsUserDropdownOpen(!isUserDropdownOpen)}
+                    className="flex items-center gap-2 py-1.5 pl-2 pr-2.5 rounded-xl border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all cursor-pointer"
+                  >
+                    {user.avatar_url ? (
+                      <img
+                        src={user.avatar_url}
+                        alt={user.name}
+                        referrerPolicy="no-referrer"
+                        className="w-7 h-7 rounded-lg object-cover border border-red-500/30"
+                      />
+                    ) : (
+                      <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-red-600 to-rose-500 text-white font-bold text-xs flex items-center justify-center shadow-xs">
+                        {user.name.charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    <span className="hidden sm:inline-block text-xs font-bold text-zinc-800 dark:text-zinc-200 max-w-[110px] truncate">
+                      {user.name}
+                    </span>
+                    <ChevronDown className="w-3.5 h-3.5 text-zinc-400" />
+                  </button>
+
+                  <AnimatePresence>
+                    {isUserDropdownOpen && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 8, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 8, scale: 0.95 }}
+                        transition={{ duration: 0.15 }}
+                        className="absolute right-0 mt-2 w-56 bg-white dark:bg-zinc-900 rounded-2xl shadow-xl border border-zinc-200 dark:border-zinc-800 py-1.5 z-50 overflow-hidden"
+                      >
+                        <div className="px-4 py-2.5 border-b border-zinc-100 dark:border-zinc-800">
+                          <p className="text-xs font-bold text-zinc-900 dark:text-zinc-100 truncate">{user.name}</p>
+                          <p className="text-[11px] text-zinc-400 truncate">{user.email}</p>
+                        </div>
+
+                        <button
+                          id="user-profile-menu-item"
+                          onClick={() => {
+                            setActiveTool('account');
+                            setIsUserDropdownOpen(false);
+                          }}
+                          className="w-full flex items-center gap-2.5 px-4 py-2 text-xs font-semibold text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer text-left"
+                        >
+                          <UserIcon className="w-4 h-4 text-zinc-400" />
+                          <span>My Account</span>
+                        </button>
+
+                        <div className="my-1 border-t border-zinc-100 dark:border-zinc-800" />
+
+                        <button
+                          id="user-logout-menu-item"
+                          onClick={() => {
+                            logout();
+                            setIsUserDropdownOpen(false);
+                            if (activeTool === 'account') setActiveTool('home');
+                          }}
+                          className="w-full flex items-center gap-2.5 px-4 py-2 text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors cursor-pointer text-left"
+                        >
+                          <LogOut className="w-4 h-4" />
+                          <span>Sign Out</span>
+                        </button>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <button
+                    id="header-signin-btn"
+                    onClick={() => openAuthModal('login')}
+                    className="hidden sm:inline-block px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-zinc-700 dark:text-zinc-300 hover:text-red-600 dark:hover:text-red-400 transition-colors cursor-pointer"
+                  >
+                    Sign In
+                  </button>
+                  <button
+                    id="header-signup-btn"
+                    onClick={() => openAuthModal('register')}
+                    className="px-3.5 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold text-xs shadow-md shadow-red-600/20 transition-all cursor-pointer"
+                  >
+                    Sign Up
+                  </button>
+                </div>
+              )}
               <button 
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
                 className="md:hidden p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full"
@@ -171,9 +277,68 @@ export default function App() {
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="fixed inset-0 z-40 bg-white dark:bg-zinc-900 pt-16 md:hidden"
+            className="fixed inset-0 z-40 bg-white dark:bg-zinc-900 pt-16 md:hidden overflow-y-auto"
           >
             <div className="p-6 space-y-4">
+              {/* Mobile Auth Header */}
+              {user ? (
+                <div className="p-4 bg-zinc-100 dark:bg-zinc-800/80 rounded-2xl space-y-3">
+                  <div className="flex items-center gap-3">
+                    {user.avatar_url ? (
+                      <img src={user.avatar_url} alt={user.name} referrerPolicy="no-referrer" className="w-10 h-10 rounded-xl object-cover" />
+                    ) : (
+                      <div className="w-10 h-10 rounded-xl bg-red-600 text-white font-bold flex items-center justify-center">
+                        {user.name.charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    <div className="overflow-hidden">
+                      <p className="font-bold text-sm truncate">{user.name}</p>
+                      <p className="text-xs text-zinc-500 truncate">{user.email}</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      onClick={() => {
+                        setActiveTool('account');
+                        setIsMenuOpen(false);
+                      }}
+                      className="flex-1 py-2 text-xs font-bold bg-white dark:bg-zinc-700 text-zinc-800 dark:text-zinc-100 rounded-xl shadow-xs"
+                    >
+                      My Account
+                    </button>
+                    <button
+                      onClick={() => {
+                        logout();
+                        setIsMenuOpen(false);
+                      }}
+                      className="flex-1 py-2 text-xs font-bold text-red-600 bg-red-50 dark:bg-red-950/40 rounded-xl"
+                    >
+                      Sign Out
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      openAuthModal('login');
+                      setIsMenuOpen(false);
+                    }}
+                    className="flex-1 py-2.5 text-xs font-bold border border-zinc-300 dark:border-zinc-700 rounded-xl"
+                  >
+                    Sign In
+                  </button>
+                  <button
+                    onClick={() => {
+                      openAuthModal('register');
+                      setIsMenuOpen(false);
+                    }}
+                    className="flex-1 py-2.5 text-xs font-bold bg-red-600 text-white rounded-xl shadow-md"
+                  >
+                    Sign Up
+                  </button>
+                </div>
+              )}
               {tools.map((tool) => (
                 <button
                   key={tool.id}
@@ -348,6 +513,9 @@ export default function App() {
           </div>
         </div>
       </footer>
+      {/* Modals */}
+      <AuthModal />
+      <ResetPasswordModal />
     </div>
   );
 }
