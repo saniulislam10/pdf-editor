@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { X, Mail, Lock, User as UserIcon, Eye, EyeOff, ArrowLeft, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { AuthModalTab } from '../types/auth';
+import { getGoogleClientId, setGoogleClientId } from '../utils/googleAuth';
 
 export const AuthModal: React.FC = () => {
   const { isAuthModalOpen, closeAuthModal, authModalTab, authModalPrompt, openAuthModal, login, register, loginWithGoogle, forgotPassword } = useAuth();
@@ -14,6 +15,8 @@ export const AuthModal: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [showClientIdPrompt, setShowClientIdPrompt] = useState(false);
+  const [customClientId, setCustomClientId] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [resetPreviewLink, setResetPreviewLink] = useState<string | null>(null);
@@ -84,6 +87,12 @@ export const AuthModal: React.FC = () => {
 
   const handleGoogleSignIn = async () => {
     setErrorMessage(null);
+    const clientId = getGoogleClientId();
+    if (!clientId) {
+      setShowClientIdPrompt(true);
+      return;
+    }
+
     setGoogleLoading(true);
     try {
       const res = await loginWithGoogle();
@@ -211,6 +220,49 @@ export const AuthModal: React.FC = () => {
                   <span>Continue with Google</span>
                 </button>
 
+                {showClientIdPrompt && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="p-3 bg-zinc-50 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 rounded-xl space-y-2 text-xs"
+                  >
+                    <div className="flex items-center justify-between font-semibold text-zinc-900 dark:text-zinc-100">
+                      <span>Google OAuth Client ID</span>
+                      <button
+                        type="button"
+                        onClick={() => setShowClientIdPrompt(false)}
+                        className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 cursor-pointer"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                      Enter your Google Web Client ID from Google Cloud Console (or configure <code className="bg-zinc-200 dark:bg-zinc-700 px-1 py-0.5 rounded text-[10px]">GOOGLE_CLIENT_ID</code> in Vercel settings):
+                    </p>
+                    <input
+                      type="text"
+                      value={customClientId}
+                      onChange={(e) => setCustomClientId(e.target.value)}
+                      placeholder="xxxx.apps.googleusercontent.com"
+                      className="w-full px-2.5 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-red-500"
+                    />
+                    <button
+                      type="button"
+                      disabled={!customClientId.trim()}
+                      onClick={() => {
+                        if (customClientId.trim()) {
+                          setGoogleClientId(customClientId.trim());
+                          setShowClientIdPrompt(false);
+                          handleGoogleSignIn();
+                        }
+                      }}
+                      className="w-full py-1.5 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 font-bold rounded-lg text-xs disabled:opacity-50 cursor-pointer"
+                    >
+                      Save & Sign In with Google
+                    </button>
+                  </motion.div>
+                )}
+
                 <div className="relative flex items-center justify-center">
                   <div className="w-full border-t border-zinc-200 dark:border-zinc-800" />
                   <span className="absolute bg-white dark:bg-zinc-900 px-3 text-[11px] uppercase tracking-wider font-semibold text-zinc-400">
@@ -320,22 +372,6 @@ export const AuthModal: React.FC = () => {
                   {activeTab === 'forgot' && 'Send Reset Link'}
                 </span>
               </button>
-
-              {activeTab === 'login' && (
-                <button
-                  type="button"
-                  id="auth-demo-fill-btn"
-                  onClick={() => {
-                    setEmail('demo@pdfcraft.com');
-                    setPassword('password123');
-                    setErrorMessage(null);
-                  }}
-                  className="w-full py-2 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 font-semibold text-xs rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <span>Use Demo Account</span>
-                  <span className="text-[11px] text-zinc-400 dark:text-zinc-500 font-normal">(demo@pdfcraft.com)</span>
-                </button>
-              )}
             </form>
 
             {/* Bottom Switch Links */}

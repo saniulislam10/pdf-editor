@@ -465,6 +465,34 @@ const handleGoogleCallback = async (req: Request, res: Response) => {
 app.get(['/auth/callback', '/auth/callback/'], handleGoogleCallback);
 
 // ==========================================
+// 10. Sync Google User (Client-Side GIS flow)
+// ==========================================
+app.post('/api/auth/google/sync', (req, res) => {
+  try {
+    const { user } = req.body;
+    if (!user || !user.email) {
+      return res.status(400).json({ error: 'User data is required' });
+    }
+
+    const googleId = user.id?.replace(/^goog_/, '') || '';
+    const dbUser = createOrUpdateGoogleUser(
+      googleId,
+      user.email,
+      user.name || user.email.split('@')[0],
+      user.avatar_url
+    );
+
+    const sessionToken = createSession(dbUser.id, req.headers['user-agent'], req.ip);
+    res.cookie(COOKIE_NAME, sessionToken, COOKIE_OPTIONS);
+
+    return res.json({ success: true, user: sanitizeUser(dbUser), token: sessionToken });
+  } catch (err: any) {
+    console.error('Google sync error:', err);
+    return res.status(500).json({ error: 'Failed to sync Google user' });
+  }
+});
+
+// ==========================================
 // 11. Vite & Static Asset Handling
 // ==========================================
 async function startServer() {

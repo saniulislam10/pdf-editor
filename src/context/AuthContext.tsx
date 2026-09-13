@@ -5,11 +5,12 @@ import {
   localLogin,
   localRegister,
   localLogout,
-  localGoogleLogin,
+  saveGoogleUserLocally,
   localChangePassword,
   localForgotPassword,
   localResetPassword,
 } from '../utils/localAuth';
+import { triggerRealGoogleSignIn } from '../utils/googleAuth';
 
 interface AuthContextType {
   user: User | null;
@@ -294,54 +295,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loginWithGoogle = async () => {
     try {
-      const redirectUri = `${window.location.origin}/auth/callback`;
-      const res = await safeFetch<{ url?: string; error?: string }>(
-        `/api/auth/google/url?redirect_uri=${encodeURIComponent(redirectUri)}`
-      );
-
-      if (res.isJson && res.ok && res.data?.url) {
-        const width = 540;
-        const height = 660;
-        const left = window.screenX + (window.outerWidth - width) / 2;
-        const top = window.screenY + (window.outerHeight - height) / 2;
-
-        const popup = window.open(
-          res.data.url,
-          'google_oauth_popup',
-          `width=${width},height=${height},left=${left},top=${top},scrollbars=yes,resizable=yes`
-        );
-
-        if (!popup || popup.closed || typeof popup.closed === 'undefined') {
-          return { success: false, error: 'Popup blocked by browser. Please allow popups to sign in with Google.' };
-        }
-
-        return { success: true };
+      // Real Google Sign In / Sign Up powered by Google Identity Services directly in browser
+      const res = await triggerRealGoogleSignIn();
+      if (!res.success || !res.user) {
+        return { 
+          success: false, 
+          error: res.error || 'Google Sign-In was cancelled or failed.' 
+        };
       }
 
-      // Fallback for Vercel static hosting / no Google OAuth backend
-      const localRes = await localGoogleLogin();
-      if (localRes.success && localRes.user) {
-        if (localRes.token) {
-          localStorage.setItem(TOKEN_STORAGE_KEY, localRes.token);
-        }
-        setUser(localRes.user);
-        setIsAuthModalOpen(false);
-        return { success: true };
+      // Save user session
+      const { user: savedUser, token } = saveGoogleUserLocally(res.user);
+      if (token) {
+        localStorage.setItem(TOKEN_STORAGE_KEY, token);
       }
+      setUser(savedUser);
+      setIsAuthModalOpen(false);
 
-      return { success: false, error: 'Could not complete Google Sign-In' };
+      // If backend server is active, notify it of the session asynchronously
+      safeFetch('/api/auth/google/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user: savedUser, token }),
+      }).catch(() => {});
+
+      return { success: true };
     } catch (err: any) {
-      // Fallback to local Google session
-      const localRes = await localGoogleLogin();
-      if (localRes.success && localRes.user) {
-        if (localRes.token) {
-          localStorage.setItem(TOKEN_STORAGE_KEY, localRes.token);
-        }
-        setUser(localRes.user);
-        setIsAuthModalOpen(false);
-        return { success: true };
-      }
-      return { success: false, error: err.message || 'Failed to initiate Google sign in' };
+      console.error('Failed to sign in with Google:', err);
+      return { 
+        success: false, 
+        error: err.message || 'Failed to initiate Google sign in.' 
+      };
     }
   };
 

@@ -149,24 +149,7 @@ export async function localLogin(
   }
 
   const users = getStoredUsers();
-  let user = users.find(u => u.email.toLowerCase() === cleanEmail);
-
-  // Auto-seed demo account if requested
-  if (!user && cleanEmail === 'demo@pdfcraft.com') {
-    const demoUser: StoredLocalUser = {
-      id: 'demo_user_1',
-      name: 'Demo User',
-      email: 'demo@pdfcraft.com',
-      avatar_url: null,
-      provider: 'email',
-      passwordHash: await hashPasswordClient('password123'),
-      created_at: Date.now(),
-      updated_at: Date.now(),
-    };
-    users.push(demoUser);
-    saveStoredUsers(users);
-    user = demoUser;
-  }
+  const user = users.find(u => u.email.toLowerCase() === cleanEmail);
 
   if (!user) {
     return { 
@@ -197,31 +180,29 @@ export async function localLogin(
   };
 }
 
-export async function localGoogleLogin(): Promise<{ success: boolean; user?: User; token?: string }> {
+export function saveGoogleUserLocally(googleUser: User): { user: User; token: string } {
   const users = getStoredUsers();
-  const googleEmail = 'user@google.com';
-  let user = users.find(u => u.email === googleEmail);
+  const existingIndex = users.findIndex(u => u.email.toLowerCase() === googleUser.email.toLowerCase());
 
-  if (!user) {
-    user = {
-      id: 'goog_' + Math.random().toString(36).substring(2, 9),
-      name: 'Google User',
-      email: googleEmail,
-      avatar_url: 'https://lh3.googleusercontent.com/a/default-user=s96-c',
-      provider: 'google',
-      created_at: Date.now(),
-      updated_at: Date.now(),
+  const storedUser: StoredLocalUser = {
+    ...googleUser,
+    updated_at: Date.now(),
+  };
+
+  if (existingIndex >= 0) {
+    users[existingIndex] = {
+      ...users[existingIndex],
+      ...storedUser,
     };
-    users.push(user);
-    saveStoredUsers(users);
+  } else {
+    users.push(storedUser);
   }
 
-  const { passwordHash: _, ...cleanUser } = user;
-  const token = localSetSession(cleanUser);
+  saveStoredUsers(users);
+  const token = localSetSession(googleUser);
 
   return {
-    success: true,
-    user: cleanUser,
+    user: googleUser,
     token,
   };
 }
