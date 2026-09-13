@@ -320,6 +320,22 @@ export const AuthModal: React.FC = () => {
                   {activeTab === 'forgot' && 'Send Reset Link'}
                 </span>
               </button>
+
+              {activeTab === 'login' && (
+                <button
+                  type="button"
+                  id="auth-demo-fill-btn"
+                  onClick={() => {
+                    setEmail('demo@pdfcraft.com');
+                    setPassword('password123');
+                    setErrorMessage(null);
+                  }}
+                  className="w-full py-2 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 font-semibold text-xs rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <span>Use Demo Account</span>
+                  <span className="text-[11px] text-zinc-400 dark:text-zinc-500 font-normal">(demo@pdfcraft.com)</span>
+                </button>
+              )}
             </form>
 
             {/* Bottom Switch Links */}
