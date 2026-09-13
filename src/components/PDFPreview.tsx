@@ -8,6 +8,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 interface PDFPreviewProps {
   file: File | ArrayBuffer;
   className?: string;
+  password?: string;
   onPageCount?: (count: number) => void;
   onThumbnailClick?: (pageIndex: number) => void;
   selectedPages?: number[];
@@ -17,6 +18,7 @@ interface PDFPreviewProps {
 export const PDFPreview: React.FC<PDFPreviewProps> = ({
   file,
   className,
+  password,
   onPageCount,
   onThumbnailClick,
   selectedPages = [],
@@ -24,6 +26,7 @@ export const PDFPreview: React.FC<PDFPreviewProps> = ({
 }) => {
   const [thumbnails, setThumbnails] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let isCancelled = false;
@@ -31,11 +34,15 @@ export const PDFPreview: React.FC<PDFPreviewProps> = ({
 
     const loadPDF = async () => {
       setLoading(true);
+      setError(null);
       try {
         const data = file instanceof File ? await file.arrayBuffer() : file;
         if (isCancelled) return;
         
-        loadingTask = pdfjsLib.getDocument({ data });
+        loadingTask = pdfjsLib.getDocument({ 
+          data, 
+          password: password || undefined 
+        });
         const pdf = await loadingTask.promise;
         if (isCancelled) return;
         
@@ -62,9 +69,14 @@ export const PDFPreview: React.FC<PDFPreviewProps> = ({
             setThumbnails(thumbUrls);
           }
         }
-      } catch (error: any) {
+      } catch (err: any) {
         if (!isCancelled) {
-          console.error('Error rendering PDF:', error);
+          console.error('Error rendering PDF:', err);
+          if (err?.name === 'PasswordException') {
+            setError('Password required to preview this document.');
+          } else {
+            setError(err?.message || 'Failed to render PDF preview.');
+          }
         }
       } finally {
         if (!isCancelled) {
@@ -87,6 +99,14 @@ export const PDFPreview: React.FC<PDFPreviewProps> = ({
     return (
       <div className="flex items-center justify-center p-12">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-500"></div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center p-8 bg-zinc-50 dark:bg-zinc-800/50 rounded-2xl border border-zinc-200 dark:border-zinc-700 text-center">
+        <p className="text-sm font-medium text-zinc-600 dark:text-zinc-400">{error}</p>
       </div>
     );
   }
