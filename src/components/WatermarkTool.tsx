@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { FileUpload } from './FileUpload';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
-import { Type, Download, Loader2, Check, Stamp } from 'lucide-react';
+import { Type, Download, Loader2, Check, Stamp, FileText, Sliders, ShieldCheck, Sparkles } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { formatBytes } from '../utils/utils';
+import { ToolInstructions } from './ToolInstructions';
 
 export const WatermarkTool: React.FC = () => {
   const [files, setFiles] = useState<File[]>([]);
@@ -67,42 +69,115 @@ export const WatermarkTool: React.FC = () => {
 
       {!resultBlob ? (
         <div className="space-y-6">
-          <FileUpload onFilesSelected={setFiles} multiple={false} />
-          
-          {files.length > 0 && (
-            <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm space-y-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Watermark Text</label>
-                  <input
-                    type="text"
-                    value={text}
-                    onChange={(e) => setText(e.target.value)}
-                    className="w-full p-3 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl outline-none focus:ring-2 focus:ring-red-500"
-                  />
+          {files.length === 0 ? (
+            <div className="max-w-3xl mx-auto space-y-6">
+              <FileUpload onFilesSelected={setFiles} multiple={false} />
+
+              <ToolInstructions
+                title="How to Add Watermarks to PDF"
+                features={[
+                  { icon: <Stamp className="w-5 h-5" />, title: 'Custom Text & Presets', description: 'Stamp text like CONFIDENTIAL, DRAFT, APPROVED, or custom labels' },
+                  { icon: <Sliders className="w-5 h-5" />, title: 'Adjustable Opacity', description: 'Fine-tune watermark transparency to keep underlying content easily legible' },
+                  { icon: <ShieldCheck className="w-5 h-5" />, title: 'Diagonal Stamping', description: 'Embossed diagonally across every page to deter unauthorized distribution' },
+                ]}
+                steps={[
+                  { title: 'Upload PDF Document', description: 'Select or drag & drop the PDF you wish to watermark.' },
+                  { title: 'Customize Text & Opacity', description: 'Choose a quick preset or type custom text, and select transparency.' },
+                  { title: 'Stamp & Download', description: 'Click Add Watermark to process all pages and download the watermarked PDF.' },
+                ]}
+              />
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {/* Document Overview Bar */}
+              <div className="p-4 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-xl bg-red-100 dark:bg-red-950/40 text-red-600 dark:text-red-400 flex items-center justify-center shrink-0">
+                    <FileText className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-bold text-sm text-zinc-900 dark:text-zinc-100 truncate">
+                      {files[0].name}
+                    </p>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                      Size: <span className="font-medium text-zinc-700 dark:text-zinc-300">{formatBytes(files[0].size)}</span>
+                    </p>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Opacity ({Math.round(opacity * 100)}%)</label>
-                  <input
-                    type="range"
-                    min="0.1"
-                    max="1"
-                    step="0.1"
-                    value={opacity}
-                    onChange={(e) => setOpacity(parseFloat(e.target.value))}
-                    className="w-full h-10 accent-red-600"
-                  />
-                </div>
+
+                <button
+                  onClick={() => setFiles([])}
+                  className="text-xs font-semibold text-zinc-500 hover:text-red-600 dark:hover:text-red-400 px-3 py-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer self-end sm:self-auto"
+                >
+                  Change File
+                </button>
               </div>
 
-              <button
-                onClick={handleWatermark}
-                disabled={processing || !text}
-                className="w-full py-4 bg-red-600 hover:bg-red-700 disabled:bg-zinc-400 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-red-600/20"
-              >
-                {processing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Stamp className="w-5 h-5" />}
-                Add Watermark
-              </button>
+              <div className="bg-white dark:bg-zinc-900 p-6 sm:p-8 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm space-y-6">
+                <div className="space-y-4">
+                  {/* Preset quick buttons */}
+                  <div>
+                    <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider block mb-2">
+                      Quick Text Presets
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {['CONFIDENTIAL', 'DO NOT COPY', 'DRAFT', 'SAMPLE', 'APPROVED'].map((preset) => (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => setText(preset)}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                            text === preset
+                              ? 'bg-red-600 text-white shadow-sm'
+                              : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+                          }`}
+                        >
+                          {preset}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-2">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Watermark Text</label>
+                      <input
+                        type="text"
+                        value={text}
+                        onChange={(e) => setText(e.target.value)}
+                        placeholder="Enter watermark text..."
+                        className="w-full p-3 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl outline-none focus:ring-2 focus:ring-red-500 font-bold"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-sm font-medium">Opacity</label>
+                        <span className="text-xs font-mono text-zinc-500 bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded-md font-bold">
+                          {Math.round(opacity * 100)}%
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0.05"
+                        max="0.8"
+                        step="0.05"
+                        value={opacity}
+                        onChange={(e) => setOpacity(parseFloat(e.target.value))}
+                        className="w-full h-10 accent-red-600 cursor-pointer"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleWatermark}
+                  disabled={processing || !text.trim()}
+                  className="w-full py-4 bg-red-600 hover:bg-red-700 disabled:bg-zinc-400 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-red-600/20 cursor-pointer"
+                >
+                  {processing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Stamp className="w-5 h-5" />}
+                  Add Watermark to All Pages
+                </button>
+              </div>
             </div>
           )}
         </div>

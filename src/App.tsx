@@ -21,7 +21,9 @@ import {
   ArrowLeft,
   Stamp,
   User as UserIcon,
-  LogOut
+  LogOut,
+  ScanText,
+  PenTool
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './utils/utils';
@@ -35,24 +37,70 @@ import { SecurityTool } from './components/SecurityTool';
 import { WatermarkTool } from './components/WatermarkTool';
 import { PDFEditor } from './components/PDFEditor';
 import { FileUpload } from './components/FileUpload';
+import { ToolInstructions } from './components/ToolInstructions';
+import { FAQSection } from './components/FAQSection';
 import { AuthModal } from './components/AuthModal';
 import { ResetPasswordModal } from './components/ResetPasswordModal';
 import { UserProfile } from './components/UserProfile';
+import { NotFound } from './components/NotFound';
 import { useAuth } from './context/AuthContext';
 
-type ToolType = 'home' | 'compress' | 'merge' | 'split' | 'remove' | 'edit' | 'rotate' | 'convert' | 'security' | 'watermark' | 'account';
+type ToolType = 'home' | 'compress' | 'merge' | 'split' | 'remove' | 'edit' | 'rotate' | 'convert' | 'security' | 'watermark' | 'account' | 'not-found';
+
+const getToolFromPath = (pathname: string): ToolType => {
+  const clean = pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
+  if (!clean || clean === 'home') return 'home';
+  const validTools: ToolType[] = ['compress', 'merge', 'split', 'remove', 'edit', 'rotate', 'convert', 'security', 'watermark', 'account'];
+  if (validTools.includes(clean as ToolType)) {
+    return clean as ToolType;
+  }
+  return 'not-found';
+};
 
 export default function App() {
-  const [activeTool, setActiveTool] = useState<ToolType>('home');
-  // Default strictly to light theme; allow persistence if user deliberately changed
+  const [currentPath, setCurrentPath] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return window.location.pathname;
+    }
+    return '/';
+  });
+
+  const [activeTool, setActiveTool] = useState<ToolType>(() => {
+    if (typeof window !== 'undefined') {
+      return getToolFromPath(window.location.pathname);
+    }
+    return 'home';
+  });
+  // Default strictly to light theme; allow persistence only if user explicitly toggled 'dark'
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('pdfcraft_theme');
-      if (saved === 'dark') return true;
-      if (saved === 'light') return false;
+      try {
+        const saved = localStorage.getItem('pdfcraft_theme');
+        if (saved === 'dark') return true;
+        if (saved === 'light') return false;
+      } catch (e) {}
     }
     return false;
   });
+
+  // Keep <html> element classes, colorScheme, and localStorage in sync
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      if (isDarkMode) {
+        document.documentElement.classList.add('dark');
+        document.documentElement.style.colorScheme = 'dark';
+        try {
+          localStorage.setItem('pdfcraft_theme', 'dark');
+        } catch (e) {}
+      } else {
+        document.documentElement.classList.remove('dark');
+        document.documentElement.style.colorScheme = 'light';
+        try {
+          localStorage.setItem('pdfcraft_theme', 'light');
+        } catch (e) {}
+      }
+    }
+  }, [isDarkMode]);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [editorFile, setEditorFile] = useState<File | null>(null);
   const { user, logout, openAuthModal } = useAuth();
@@ -70,6 +118,17 @@ export default function App() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Sync browser back/forward buttons with active tool
+  useEffect(() => {
+    const handlePopState = () => {
+      const path = window.location.pathname;
+      setCurrentPath(path);
+      setActiveTool(getToolFromPath(path));
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
   // When user signs in, if they attempted to open a tool, automatically open it
   useEffect(() => {
     if (user && pendingTool) {
@@ -80,7 +139,7 @@ export default function App() {
 
   // If user logs out while in a tool, return to home
   useEffect(() => {
-    if (!user && activeTool !== 'home' && activeTool !== 'account') {
+    if (!user && activeTool !== 'home' && activeTool !== 'account' && activeTool !== 'not-found') {
       setActiveTool('home');
     }
   }, [user, activeTool]);
@@ -101,6 +160,14 @@ export default function App() {
     if (toolId === 'home') {
       setActiveTool('home');
       setEditorFile(null);
+      if (window.location.pathname !== '/') {
+        window.history.pushState(null, '', '/');
+        setCurrentPath('/');
+      }
+      return;
+    }
+    if (toolId === 'not-found') {
+      setActiveTool('not-found');
       return;
     }
     if (toolId === 'account') {
@@ -109,6 +176,8 @@ export default function App() {
         return;
       }
       setActiveTool('account');
+      window.history.pushState(null, '', '/account');
+      setCurrentPath('/account');
       return;
     }
     // Strict requirement: Users must login to use any tool
@@ -120,11 +189,13 @@ export default function App() {
     }
     setActiveTool(toolId);
     if (toolId !== 'edit') setEditorFile(null);
+    window.history.pushState(null, '', `/${toolId}`);
+    setCurrentPath(`/${toolId}`);
   };
 
   const renderTool = () => {
-    // If not logged in and trying to access any tool
-    if (!user && activeTool !== 'home' && activeTool !== 'account') {
+    // If not logged in and trying to access any tool (exclude not-found)
+    if (!user && activeTool !== 'home' && activeTool !== 'account' && activeTool !== 'not-found') {
       const currentToolObj = tools.find(t => t.id === activeTool);
       return (
         <div className="max-w-md mx-auto py-12 px-8 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl shadow-xl text-center space-y-6">
@@ -157,7 +228,7 @@ export default function App() {
             </button>
             <div>
               <button
-                onClick={() => setActiveTool('home')}
+                onClick={() => handleSelectTool('home')}
                 className="inline-block text-xs font-bold text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200 pt-2 cursor-pointer"
               >
                 ← Back to All Tools
@@ -177,6 +248,14 @@ export default function App() {
       case 'convert': return <ConvertTool />;
       case 'security': return <SecurityTool />;
       case 'watermark': return <WatermarkTool />;
+      case 'not-found':
+        return (
+          <NotFound
+            onNavigateHome={() => handleSelectTool('home')}
+            onSelectTool={(id) => handleSelectTool(id as ToolType)}
+            requestedPath={currentPath}
+          />
+        );
       case 'edit': 
         return editorFile ? (
           <PDFEditor file={editorFile} onBack={() => setEditorFile(null)} />
@@ -186,7 +265,24 @@ export default function App() {
               <h2 className="text-3xl font-bold tracking-tight">Edit PDF</h2>
               <p className="text-zinc-500">Upload a PDF to automatically scan with OCR and directly edit or add text.</p>
             </div>
-            <FileUpload onFilesSelected={(files) => setEditorFile(files[0])} multiple={false} />
+            
+            <div className="max-w-3xl mx-auto space-y-6">
+              <FileUpload onFilesSelected={(files) => setEditorFile(files[0])} multiple={false} />
+
+              <ToolInstructions
+                title="How to Edit PDF Content"
+                features={[
+                  { icon: <ScanText className="w-5 h-5" />, title: 'Smart OCR Detection', description: 'Automatically scans font geometry and locates editable paragraphs' },
+                  { icon: <Type className="w-5 h-5" />, title: 'Direct Text Editing', description: 'Modify existing text, alter typographic styling, or add new text blocks' },
+                  { icon: <PenTool className="w-5 h-5" />, title: 'Annotations & Drawings', description: 'Highlight text, draw vector signatures, and stamp markup directly' },
+                ]}
+                steps={[
+                  { title: 'Upload PDF Document', description: 'Upload any PDF to parse text layers and layout coordinates.' },
+                  { title: 'Click to Edit Text', description: 'Select detected text to change words, or use drawing tools on any page.' },
+                  { title: 'Export Modified PDF', description: 'Save and download your newly modified PDF with high-resolution output.' },
+                ]}
+              />
+            </div>
           </div>
         );
       case 'account':
@@ -196,7 +292,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 transition-colors font-sans">
+    <div className={cn("min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 transition-colors font-sans", isDarkMode && "dark")}>
       {/* Navigation */}
       <nav className="sticky top-0 z-50 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -234,10 +330,10 @@ export default function App() {
             <div className="flex items-center gap-3">
               <button
                 id="theme-toggle-btn"
-                onClick={() => setIsDarkMode(!isDarkMode)}
+                onClick={() => setIsDarkMode(prev => !prev)}
                 title={isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
                 aria-label={isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
-                className="p-2.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors text-zinc-600 dark:text-zinc-400 hover:text-red-600 dark:hover:text-red-400"
+                className="p-2.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors text-zinc-600 dark:text-zinc-400 hover:text-red-600 dark:hover:text-red-400 cursor-pointer flex items-center justify-center"
               >
                 {isDarkMode ? <Sun className="w-5 h-5 text-amber-400" /> : <Moon className="w-5 h-5" />}
               </button>
@@ -408,6 +504,26 @@ export default function App() {
                   </button>
                 </div>
               )}
+              {/* Appearance Toggle */}
+              <div className="flex items-center justify-between p-3.5 rounded-2xl bg-zinc-100/70 dark:bg-zinc-800/70 border border-zinc-200 dark:border-zinc-700">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-xl bg-white dark:bg-zinc-700 text-zinc-700 dark:text-zinc-200 shadow-xs">
+                    {isDarkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-zinc-600" />}
+                  </div>
+                  <div>
+                    <p className="font-bold text-xs text-zinc-900 dark:text-zinc-100">Theme Appearance</p>
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400">{isDarkMode ? 'Dark Mode' : 'Light Mode'}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsDarkMode(prev => !prev)}
+                  className="px-3 py-1.5 rounded-xl text-xs font-bold bg-white dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 text-zinc-800 dark:text-zinc-200 cursor-pointer shadow-xs hover:border-zinc-300 dark:hover:border-zinc-500"
+                >
+                  {isDarkMode ? 'Switch to Light' : 'Switch to Dark'}
+                </button>
+              </div>
+
               {tools.map((tool) => (
                 <button
                   key={tool.id}
@@ -549,19 +665,23 @@ export default function App() {
                 </div>
               </div>
             </div>
+
+            {/* Frequently Asked Questions */}
+            <FAQSection />
           </div>
         ) : (
           <div className="space-y-8">
-            <button
-              onClick={() => {
-                setActiveTool('home');
-                setEditorFile(null);
-              }}
-              className="inline-flex items-center gap-2 text-sm font-bold text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              Back to Tools
-            </button>
+            {activeTool !== 'not-found' && (
+              <button
+                onClick={() => {
+                  handleSelectTool('home');
+                }}
+                className="inline-flex items-center gap-2 text-sm font-bold text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors cursor-pointer"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Back to Tools
+              </button>
+            )}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}

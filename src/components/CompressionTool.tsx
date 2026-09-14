@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { FileUpload } from './FileUpload';
 import { compressPDF } from '../utils/pdfOperations';
 import { formatBytes } from '../utils/utils';
-import { Zap, Download, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Zap, Download, CheckCircle2, AlertCircle, FileText, Sliders, Sparkles, RotateCcw } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { ToolInstructions } from './ToolInstructions';
 
 export const CompressionTool: React.FC = () => {
   const [files, setFiles] = useState<File[]>([]);
@@ -58,10 +59,51 @@ export const CompressionTool: React.FC = () => {
 
       {!result ? (
         <div className="space-y-6">
-          <FileUpload onFilesSelected={setFiles} multiple={false} />
-          
-          {files.length > 0 && (
-            <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm space-y-6">
+          {files.length === 0 ? (
+            <div className="max-w-3xl mx-auto space-y-6">
+              <FileUpload onFilesSelected={setFiles} multiple={false} />
+
+              <ToolInstructions
+                title="How to Compress PDF Files"
+                features={[
+                  { icon: <Zap className="w-5 h-5" />, title: 'Smart Compression', description: 'Choose from 4 compression levels: Low, Medium, High, or Extreme' },
+                  { icon: <Sliders className="w-5 h-5" />, title: 'Quality Balance', description: 'Balance file size reduction against visual resolution and clarity' },
+                  { icon: <Sparkles className="w-5 h-5" />, title: 'Lossless Optimizer', description: 'Clean up metadata, object streams, and duplicate font structures' },
+                ]}
+                steps={[
+                  { title: 'Upload Document', description: 'Select or drag & drop the PDF you want to shrink in size.' },
+                  { title: 'Select Compression Level', description: 'Pick your preferred balance between file size and document resolution.' },
+                  { title: 'Download Compressed PDF', description: 'Review your total file reduction percentage and save your optimized file.' },
+                ]}
+              />
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {/* Document Overview Bar */}
+              <div className="p-4 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-xl bg-red-100 dark:bg-red-950/40 text-red-600 dark:text-red-400 flex items-center justify-center shrink-0">
+                    <FileText className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-bold text-sm text-zinc-900 dark:text-zinc-100 truncate">
+                      {files[0].name}
+                    </p>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                      Original Size: <span className="font-medium text-zinc-700 dark:text-zinc-300">{formatBytes(files[0].size)}</span>
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setFiles([])}
+                  className="text-xs font-semibold text-zinc-500 hover:text-red-600 dark:hover:text-red-400 px-3 py-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer self-end sm:self-auto"
+                >
+                  Change File
+                </button>
+              </div>
+
+              <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm space-y-6">
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-wider">Compression Level</h3>
@@ -118,6 +160,7 @@ export const CompressionTool: React.FC = () => {
                   </>
                 )}
               </button>
+            </div>
             </div>
           )}
         </div>

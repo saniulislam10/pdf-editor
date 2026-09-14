@@ -24,6 +24,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
 import { mergePDFs } from '../utils/pdfOperations';
 import { formatBytes, cn } from '../utils/utils';
+import { ToolInstructions } from './ToolInstructions';
 
 // Configure pdfjs worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
@@ -272,6 +273,20 @@ export const MergeTool: React.FC = () => {
               </div>
             </div>
           </div>
+
+          <ToolInstructions
+            title="How to Merge PDF Documents"
+            features={[
+              { icon: <Layers className="w-5 h-5" />, title: 'Unlimited Merging', description: 'Combine multiple PDF documents together effortlessly' },
+              { icon: <ArrowUpDown className="w-5 h-5" />, title: 'Visual Reordering', description: 'Drag and drop document cards to set the exact page sequence' },
+              { icon: <Sparkles className="w-5 h-5" />, title: 'Quality Retained', description: 'Keeps high-resolution artwork, form fields, and typography crisp' },
+            ]}
+            steps={[
+              { title: 'Select PDF Documents', description: 'Upload two or more PDF files you wish to combine into a single file.' },
+              { title: 'Arrange Document Order', description: 'Drag and drop preview cards to establish your desired document flow.' },
+              { title: 'Merge & Download', description: 'Click Merge PDF to assemble and instantly download your merged file.' },
+            ]}
+          />
         </div>
       )}
 

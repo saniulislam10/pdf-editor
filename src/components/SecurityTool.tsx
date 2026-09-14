@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { cn, formatBytes } from '../utils/utils';
 import confetti from 'canvas-confetti';
+import { ToolInstructions } from './ToolInstructions';
 
 interface ProcessResult {
   blob: Blob;
@@ -300,6 +301,43 @@ export const SecurityTool: React.FC = () => {
 
           {/* File Upload Area */}
           <FileUpload onFilesSelected={handleFilesSelected} multiple={false} />
+
+          {files.length === 0 && (
+            <ToolInstructions
+              title={mode === 'protect' ? 'How to Protect a PDF with Password' : 'How to Unlock a PDF Document'}
+              subtitle={
+                mode === 'protect'
+                  ? 'Follow these three simple steps to encrypt and restrict your PDF document.'
+                  : 'Follow these three simple steps to decrypt and remove restrictions from your PDF.'
+              }
+              features={
+                mode === 'protect'
+                  ? [
+                      { icon: <Lock className="w-5 h-5" />, title: 'AES-256 Encryption', description: 'Bank-grade cryptographic cipher locks document against unauthorized opening' },
+                      { icon: <KeyRound className="w-5 h-5" />, title: 'Password Strength Meter', description: 'Real-time validation ensures robust combination of letters, numbers, and symbols' },
+                      { icon: <SlidersHorizontal className="w-5 h-5" />, title: 'Granular Permissions', description: 'Selectively restrict or permit printing, text copying, and page annotations' },
+                    ]
+                  : [
+                      { icon: <Unlock className="w-5 h-5" />, title: 'Instant Decryption', description: 'Remove encryption headers safely using the valid document password' },
+                      { icon: <Eye className="w-5 h-5" />, title: 'In-Browser Page Preview', description: 'Inspect and preview decrypted page thumbnails directly before saving' },
+                      { icon: <ShieldCheck className="w-5 h-5" />, title: 'Full Permission Restore', description: 'Permanently re-enables copy, modify, and printing permissions' },
+                    ]
+              }
+              steps={
+                mode === 'protect'
+                  ? [
+                      { title: 'Upload Document', description: 'Select or drag & drop any unprotected PDF document to secure.' },
+                      { title: 'Set Strong Password', description: 'Enter your password and optionally configure advanced permission locks.' },
+                      { title: 'Encrypt & Download', description: 'Save your AES-256 encrypted PDF. Retain your password in a safe place.' },
+                    ]
+                  : [
+                      { title: 'Upload Encrypted PDF', description: 'Upload your password-protected or restricted PDF document.' },
+                      { title: 'Enter Password', description: 'Provide the document password to unlock and verify its contents.' },
+                      { title: 'Download Unlocked PDF', description: 'Export a completely unencrypted version with all viewing restrictions removed.' },
+                    ]
+              }
+            />
+          )}
 
           {analyzing && (
             <div className="flex items-center justify-center gap-2 py-4 text-sm text-zinc-500">
